@@ -165,19 +165,50 @@ def format_price(value, ticker: str) -> str:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_market_cap(ticker: str):
-    """Best-effort market cap in USD; provider coverage can be missing."""
+    """Best-effort market cap in USD; return None rather than inventing a value."""
     try:
         instrument = yf.Ticker(ticker)
-        fast = instrument.fast_info
+        value = None
+
+        # yfinance FastInfo is dict-like in some versions and attribute-based
+        # in others. Try both access patterns.
         try:
-            value = fast.get("market_cap")
+            fast = instrument.fast_info
+            try:
+                value = fast.get("market_cap")
+            except Exception:
+                value = None
+            if value is None:
+                try:
+                    value = fast["market_cap"]
+                except Exception:
+                    value = None
+            if value is None:
+                try:
+                    value = fast.market_cap
+                except Exception:
+                    value = None
         except Exception:
             value = None
+
+        # Fallback to Yahoo's detailed quote metadata.
         if value is None:
-            info = instrument.info
-            value = info.get("marketCap")
-        return float(value) if value is not None else None
+            try:
+                info = instrument.info or {}
+                value = info.get("marketCap")
+                # If marketCap is missing, estimate only when both shares
+                # outstanding and a current price are available.
+                if value is None:
+                    shares = info.get("sharesOutstanding")
+                    price = info.get("currentPrice") or info.get("regularMarketPrice")
+                    if shares is not None and price is not None:
+                        value = float(shares) * float(price)
+            except Exception:
+                value = None
+
+        return float(value) if value is not None and float(value) > 0 else None
     except Exception:
         return None
 
@@ -353,10 +384,22 @@ elif page == "Sector Monitor":
         company_tickers = SECTOR_COMPANIES[sector]
         company_snap = get_snapshot(tuple(company_tickers))
         with st.spinner("Loading company market capitalisations…"):
-            cap_rows = [{"Ticker": symbol, "Market Cap (USD bn)": (get_market_cap(symbol) / 1_000_000_000) if get_market_cap(symbol) is not None else None} for symbol in company_tickers]
+            cap_rows = []
+            for symbol in company_tickers:
+                cap_value = get_market_cap(symbol)
+                cap_rows.append({
+                    "Ticker": symbol,
+                    "Market Cap (USD bn)": (cap_value / 1_000_000_000) if cap_value is not None else None,
+                })
         caps = pd.DataFrame(cap_rows)
         company_snap = company_snap.merge(caps, on="Ticker", how="left")
         company_snap = company_snap.sort_values("Market Cap (USD bn)", ascending=False, na_position="last")
+        if company_snap["Market Cap (USD bn)"].notna().sum() == 0:
+            st.warning(
+                "Market capitalisation was unavailable for these tickers from the current data provider. "
+                "The table cannot be considered market-cap ranked until valid values are returned. "
+                "Try refreshing later; if this persists, we should connect a dedicated market-data source."
+            )
         st.dataframe(
             company_snap[["Ticker", "Market Cap (USD bn)", "Last", "Daily %", "As of"]].style.format(
                 {"Market Cap (USD bn)": "${:,.1f}", "Last": "{:,.2f}", "Daily %": "{:+.2f}%"},
