@@ -231,31 +231,39 @@ def render_price_chart(data: pd.DataFrame, ticker: str, interval_label: str):
 
 def render_instrument(ticker: str, period_label: str, name: str = ""):
     period, interval = PERIOD_OPTIONS[period_label]
-    with st.spinner(f"Loading {ticker} history…"):
-        data = get_history(ticker, period, interval)
-    if data.empty:
+    # Keep chart data separate from return-calculation data. The selected chart
+    # window may be only 1D/1M, but the return table needs at least 2 years of
+    # daily history to calculate 1D, 5D, 1M, 3M, 6M, YTD and 1Y consistently.
+    with st.spinner(f"Loading {ticker} price history…"):
+        chart_data = get_history(ticker, period, interval)
+        daily_history = get_history(ticker, "2y", "1d")
+    if chart_data.empty:
         st.error(f"Unable to retrieve history for {ticker}. The data provider may not support this symbol or interval.")
         return
-    data = data.sort_values("Date").reset_index(drop=True)
-    latest = float(data["Close"].iloc[-1])
-    prev = float(data["Close"].iloc[-2]) if len(data) > 1 else None
-    daily_change = ((latest / prev) - 1) * 100 if prev else None
+    chart_data = chart_data.sort_values("Date").reset_index(drop=True)
+    latest = float(chart_data["Close"].iloc[-1])
+    prev = float(chart_data["Close"].iloc[-2]) if len(chart_data) > 1 else None
+    last_bar_change = ((latest / prev) - 1) * 100 if prev else None
     title = name or ticker
     st.subheader(title)
     m1, m2, m3 = st.columns(3)
     m1.metric("Latest available price", format_price(latest, ticker))
-    m2.metric("Last bar move", f"{daily_change:+.2f}%" if daily_change is not None else "—")
-    m3.metric("Last data point", pd.Timestamp(data["Date"].iloc[-1]).strftime("%d %b %Y %H:%M"))
-    render_price_chart(data, ticker, interval)
+    m2.metric("Last bar move", f"{last_bar_change:+.2f}%" if last_bar_change is not None else "—")
+    m3.metric("Last chart point", pd.Timestamp(chart_data["Date"].iloc[-1]).strftime("%d %b %Y %H:%M"))
+    render_price_chart(chart_data, ticker, interval)
     st.markdown("#### Historical returns")
-    table = returns_table(data)
+    if daily_history.empty:
+        st.warning("The provider returned no daily history for return calculations. Try refreshing later or verify the ticker.")
+        table = returns_table(chart_data)
+    else:
+        table = returns_table(daily_history)
     st.dataframe(
         table.style.format({"Reference close": "{:,.4f}", "Latest close": "{:,.4f}", "Return (%)": "{:+.2f}%"}, na_rep="—"),
         use_container_width=True, hide_index=True
     )
     csv = table.to_csv(index=False).encode("utf-8")
     st.download_button("Download return table (CSV)", csv, file_name=f"{ticker.replace('=', '_')}_returns.csv", mime="text/csv")
-    st.caption("Returns use adjusted closing prices where the provider supplies them. Intraday periods can have limited history; unavailable reference dates are shown as insufficient history.")
+    st.caption("The chart uses your selected period; the return table uses up to two years of daily adjusted history. Returns are based on the latest available daily close, which may differ from the latest intraday chart point. Provider coverage and delays vary.")
 
 
 # -----------------------------
