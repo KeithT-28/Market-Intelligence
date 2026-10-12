@@ -164,6 +164,24 @@ def format_price(value, ticker: str) -> str:
     return f"{value:,.4f}" if "=X" in ticker or ticker.endswith("=X") else f"{value:,.2f}"
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_market_cap(ticker: str):
+    """Best-effort market cap in USD; provider coverage can be missing."""
+    try:
+        instrument = yf.Ticker(ticker)
+        fast = instrument.fast_info
+        try:
+            value = fast.get("market_cap")
+        except Exception:
+            value = None
+        if value is None:
+            info = instrument.info
+            value = info.get("marketCap")
+        return float(value) if value is not None else None
+    except Exception:
+        return None
+
+
 def returns_table(data: pd.DataFrame) -> pd.DataFrame:
     """Returns based on latest available adjusted close and historical reference."""
     if data.empty or "Close" not in data:
@@ -331,11 +349,21 @@ elif page == "Sector Monitor":
         render_instrument(sector_etf, period_label, f"{sector} ({sector_etf})")
     with right:
         st.markdown("#### Company constituents")
-        st.caption("Starter list of representative large-cap constituents. This list is not guaranteed to be the current top 10 by market capitalisation; dynamic rankings require a reliable constituent/market-cap data source.")
+        st.caption("Companies are ranked by market capitalisation within this starter universe. This is not yet a complete scan of every S&P 500 constituent, so it may not identify the true top 10 for the entire sector. Market-cap values depend on provider coverage.")
         company_tickers = SECTOR_COMPANIES[sector]
         company_snap = get_snapshot(tuple(company_tickers))
-        company_snap = company_snap.sort_values("Daily %", ascending=False, na_position="last")
-        st.dataframe(company_snap.style.format({"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}, na_rep="—"), use_container_width=True, hide_index=True)
+        with st.spinner("Loading company market capitalisations…"):
+            cap_rows = [{"Ticker": symbol, "Market Cap (USD bn)": (get_market_cap(symbol) / 1_000_000_000) if get_market_cap(symbol) is not None else None} for symbol in company_tickers]
+        caps = pd.DataFrame(cap_rows)
+        company_snap = company_snap.merge(caps, on="Ticker", how="left")
+        company_snap = company_snap.sort_values("Market Cap (USD bn)", ascending=False, na_position="last")
+        st.dataframe(
+            company_snap[["Ticker", "Market Cap (USD bn)", "Last", "Daily %", "As of"]].style.format(
+                {"Market Cap (USD bn)": "${:,.1f}", "Last": "{:,.2f}", "Daily %": "{:+.2f}%"},
+                na_rep="—"
+            ),
+            use_container_width=True, hide_index=True
+        )
         selected_company = st.selectbox("Open company chart", company_tickers)
         render_instrument(selected_company, period_label)
 
