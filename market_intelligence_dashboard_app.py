@@ -258,6 +258,66 @@ def render_instrument(ticker: str, period_label: str, name: str = ""):
     st.caption("Returns use adjusted closing prices where the provider supplies them. Intraday periods can have limited history; unavailable reference dates are shown as insufficient history.")
 
 
+def render_explorer_view(ticker: str, period_label: str, name: str = ""):
+    """Mobile-friendly Instrument Explorer layout inspired by the design mock-up."""
+    period, interval = PERIOD_OPTIONS[period_label]
+    with st.spinner(f"Loading {ticker} history…"):
+        data = get_history(ticker, period, interval)
+    if data.empty:
+        st.warning(f"No price history was returned for {ticker}. Try another period or instrument.")
+        return
+
+    data = data.sort_values("Date").reset_index(drop=True)
+    latest = float(data["Close"].iloc[-1])
+    previous = float(data["Close"].iloc[-2]) if len(data) > 1 else None
+    bar_move = ((latest / previous) - 1) * 100 if previous else None
+    display_name = name or ticker
+
+    # Compact summary row instead of the large three-metric layout used elsewhere.
+    p1, p2 = st.columns([1.3, 1])
+    with p1:
+        st.metric("Latest available price", format_price(latest, ticker))
+    with p2:
+        st.metric("Last bar move", f"{bar_move:+.2f}%" if bar_move is not None else "—")
+
+    with st.container(border=True):
+        head_left, head_right = st.columns([5, 1])
+        with head_left:
+            st.markdown(f"### {display_name}")
+            st.caption(f"{mode_label} · {period_label} view" if (mode_label := st.session_state.get("explorer_mode_label")) else f"{period_label} view")
+        with head_right:
+            st.markdown("📈")
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=data["Date"], y=data["Close"], mode="lines", name=ticker,
+            line=dict(width=2.5, color="#429E88"),
+            fill="tozeroy", fillcolor="rgba(66,158,136,0.12)",
+            hovertemplate="%{x}<br>Price: %{y:,.4f}<extra></extra>",
+        ))
+        fig.update_layout(
+            template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white",
+            height=310, margin=dict(l=8, r=8, t=8, b=8),
+            xaxis_title=None, yaxis_title=None, showlegend=False, hovermode="x unified",
+        )
+        fig.update_xaxes(showgrid=False, showline=False, ticks="")
+        fig.update_yaxes(showgrid=True, gridcolor="rgba(128,128,128,0.18)", zeroline=False)
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.caption("Illustrative layout · actual chart uses retrieved market history. Data may be delayed and is not guaranteed real-time.")
+
+    show_returns = st.checkbox("Show return calculations table", value=True, key=f"show_returns_{ticker}")
+    if show_returns:
+        st.markdown("#### Historical returns")
+        table = returns_table(data)
+        st.dataframe(
+            table[["Period", "Reference date", "Return (%)"]].style.format({"Return (%)": "{:+.2f}%"}, na_rep="—"),
+            use_container_width=True, hide_index=True
+        )
+        csv = table.to_csv(index=False).encode("utf-8")
+        st.download_button("Download return table (CSV)", csv, file_name=f"{ticker.replace('=', '_')}_returns.csv", mime="text/csv")
+    st.caption(f"Last data point returned: {pd.Timestamp(data['Date'].iloc[-1]).strftime('%d %b %Y %H:%M')} · Chart interval: {interval}.")
+
+
 # -----------------------------
 # Sidebar / navigation
 # -----------------------------
@@ -384,18 +444,24 @@ elif page == "G10 FX":
 
 else:
     st.markdown("### Instrument Explorer")
-    mode = st.radio("Asset type", ["ETF", "Stock", "FX", "Index"], horizontal=True)
+    st.caption("Explore one instrument at a time using a consistent layout for ETFs, stocks, currencies and indices.")
+    mode = st.radio("Asset class", ["ETF", "Stock", "G10 FX", "Index"], horizontal=True, key="explorer_asset_class")
     if mode == "ETF":
         options = ETF_UNIVERSE
     elif mode == "Stock":
         all_companies = sorted({x for names in SECTOR_COMPANIES.values() for x in names})
         options = {x: x for x in all_companies}
-    elif mode == "FX":
+    elif mode == "G10 FX":
         options = FX_UNIVERSE
     else:
         options = {"S&P 500": "^GSPC", "Dow Jones Industrial Average": "^DJI", "Nasdaq Composite": "^IXIC", "Russell 2000": "^RUT"}
-    label = st.selectbox("Instrument", list(options.keys()))
-    render_instrument(options[label], period_label, label)
+
+    label = st.selectbox("Instrument", list(options.keys()), key="explorer_instrument")
+    period_choices = ["1D", "5D", "1M", "3M", "YTD", "1Y"]
+    default_period = period_label if period_label in period_choices else "1Y"
+    explorer_period = st.radio("Historical period", period_choices, index=period_choices.index(default_period), horizontal=True, key="explorer_period")
+    st.session_state["explorer_mode_label"] = "FX" if mode == "G10 FX" else mode
+    render_explorer_view(options[label], explorer_period, label)
 
 st.divider()
 st.caption("Built with Streamlit, Plotly, pandas and yfinance. This is a personal research dashboard, not investment advice. Verify market data with your broker or licensed data provider before making decisions.")
