@@ -794,7 +794,7 @@ st.sidebar.markdown(
 )
 page = st.sidebar.radio(
     "WORKSPACE",
-    ["Overview", "ETF Explorer", "Sector Monitor", "G10 FX", "Commodities", "Instrument Explorer"],
+    ["Overview", "Macro & Event Analysis", "ETF Explorer", "Sector Monitor", "G10 FX", "Commodities", "Instrument Explorer"],
 )
 st.sidebar.divider()
 period_label = st.sidebar.selectbox("Chart period", list(PERIOD_OPTIONS.keys()), index=2)
@@ -879,6 +879,28 @@ if page == "Overview":
         else:
             st.metric("US Dollar Index", "—", "Unavailable")
     st.caption("Table dates show the latest available trading session, not the page refresh time. Daily bars commonly carry a 00:00 date label; that is the session date, not the actual market-close time. Use Refresh market data to request a fresh provider response.")
+
+    # Compact macro context strip on the Overview; deeper event analysis lives on its own page.
+    st.markdown("#### Macro context")
+    macro_cols = st.columns(4)
+    overview_macro_specs = [("US 10Y yield", "^TNX", "yield"), ("US Dollar Index", "DX-Y.NYB", "price"), ("Gold futures", "GC=F", "price"), ("WTI crude", "CL=F", "price")]
+    for col, (macro_label, macro_ticker, macro_kind) in zip(macro_cols, overview_macro_specs):
+        with col:
+            macro_hist = get_history(macro_ticker, "5d", "1d")
+            if not macro_hist.empty and len(macro_hist) >= 2:
+                macro_hist = macro_hist.sort_values("Date")
+                macro_last = float(macro_hist["Close"].iloc[-1])
+                macro_prev = float(macro_hist["Close"].iloc[-2])
+                if macro_kind == "yield":
+                    macro_delta = f"{(macro_last - macro_prev) * 100:+.0f} bps"
+                    macro_value = f"{macro_last:.2f}%"
+                else:
+                    macro_delta = f"{((macro_last / macro_prev) - 1) * 100:+.2f}%" if macro_prev else "—"
+                    macro_value = f"{macro_last:,.2f}"
+                st.metric(macro_label, macro_value, macro_delta)
+            else:
+                st.metric(macro_label, "—", "Unavailable")
+    st.caption("Macro context is a market snapshot, not an official economic calendar. Open Macro & Event Analysis in the sidebar to study historical release windows.")
 
     # Compact jump navigation makes the long Overview easier to scan on mobile.
     st.markdown(
@@ -1495,6 +1517,176 @@ if page == "Overview":
         key="overview_quick_chart_instrument",
     )
     render_instrument(quick_options[quick_label], period_label, quick_label)
+
+elif page == "Macro & Event Analysis":
+    st.markdown("<div class='mi-eyebrow'>MACRO RESEARCH</div><h2>Macro & Event Analysis</h2>", unsafe_allow_html=True)
+    st.caption("Study how US-listed sectors and major ETFs behaved around a historical macro release. Enter the release date from a trusted calendar; the app does not assume or invent event dates.")
+
+    event_col1, event_col2 = st.columns([1.15, 1])
+    with event_col1:
+        event_type = st.selectbox(
+            "Event type",
+            ["CPI / inflation", "FOMC / interest rates", "Employment / payrolls", "GDP / growth", "Other / custom"],
+            key="macro_event_type",
+        )
+    with event_col2:
+        default_event_date = dt.date.today() - dt.timedelta(days=30)
+        event_date = st.date_input(
+            "Release date",
+            value=default_event_date,
+            min_value=dt.date.today() - dt.timedelta(days=720),
+            max_value=dt.date.today(),
+            help="Choose the actual publication date. If the date is not a trading day, the study maps to the next available trading session.",
+            key="macro_event_date",
+        )
+
+    st.markdown("#### Event-study settings")
+    left_setting, right_setting = st.columns(2)
+    with left_setting:
+        event_window = st.selectbox("Post-event horizon", ["T+1 session", "T+3 sessions", "T+5 sessions"], index=2, key="macro_post_horizon")
+    with right_setting:
+        compare_group = st.selectbox("Compare", ["Sectors + benchmarks", "Sectors only", "Major ETFs only"], key="macro_compare_group")
+
+    post_sessions = {"T+1 session": 1, "T+3 sessions": 3, "T+5 sessions": 5}[event_window]
+    sector_specs = [(sector, ticker) for sector, ticker in SECTOR_ETFS.items()]
+    benchmark_specs = [("S&P 500", "SPY"), ("Nasdaq 100", "QQQ"), ("Small caps", "IWM"), ("Long Treasuries", "TLT"), ("Gold ETF", "GLD")]
+    if compare_group == "Sectors only":
+        study_specs = sector_specs
+    elif compare_group == "Major ETFs only":
+        study_specs = benchmark_specs
+    else:
+        study_specs = sector_specs + benchmark_specs
+
+    event_ts = pd.Timestamp(event_date)
+    event_rows = []
+    event_paths = []
+    skipped = []
+    progress = st.progress(0, text="Loading historical price data…")
+    for idx, (display_name, ticker) in enumerate(study_specs):
+        hist = get_return_history(ticker)
+        progress.progress((idx + 1) / max(len(study_specs), 1), text=f"Loading {ticker} ({idx + 1}/{len(study_specs)})…")
+        if hist.empty or "Close" not in hist.columns:
+            skipped.append(f"{display_name} ({ticker})")
+            continue
+        hist = hist.dropna(subset=["Date", "Close"]).sort_values("Date").reset_index(drop=True)
+        hist["Date"] = pd.to_datetime(hist["Date"]).dt.tz_localize(None)
+        event_pos = int(hist["Date"].searchsorted(event_ts, side="left"))
+        if event_pos >= len(hist) or event_pos < 5 or event_pos + post_sessions >= len(hist):
+            skipped.append(f"{display_name} ({ticker})")
+            continue
+        mapped_date = pd.Timestamp(hist.loc[event_pos, "Date"])
+        baseline = float(hist.loc[event_pos - 1, "Close"])
+        if not baseline:
+            skipped.append(f"{display_name} ({ticker})")
+            continue
+        horizon_close = float(hist.loc[event_pos + post_sessions, "Close"])
+        horizon_return = (horizon_close / baseline - 1) * 100
+        event_day_return = (float(hist.loc[event_pos, "Close"]) / baseline - 1) * 100
+        pre_event_return = (float(hist.loc[event_pos - 1, "Close"]) / float(hist.loc[event_pos - 5, "Close"]) - 1) * 100
+        event_rows.append({
+            "Group": "Sector" if ticker in SECTOR_ETFS.values() else "Benchmark",
+            "Instrument": display_name,
+            "Ticker": ticker,
+            "T0 return (%)": event_day_return,
+            f"T+{post_sessions} return (%)": horizon_return,
+            "T-5 to T-1 (%)": pre_event_return,
+            "Event session": mapped_date.strftime("%Y-%m-%d"),
+        })
+        for offset in range(-5, post_sessions + 1):
+            close = float(hist.loc[event_pos + offset, "Close"])
+            event_paths.append({
+                "Instrument": display_name,
+                "Ticker": ticker,
+                "Session": f"T{offset:+d}" if offset != 0 else "T0",
+                "Offset": offset,
+                "Return from T-1 close (%)": (close / baseline - 1) * 100,
+            })
+    progress.empty()
+
+    st.markdown("#### Results")
+    if not event_rows:
+        st.warning("No event window could be calculated. Choose a historical release date with at least five trading sessions before it and enough sessions after it. Yahoo Finance history may also be unavailable.")
+    else:
+        event_df = pd.DataFrame(event_rows)
+        mapped_sessions = sorted(event_df["Event session"].unique())
+        if len(mapped_sessions) == 1:
+            st.caption(f"{event_type} · selected release date: {event_date:%Y-%m-%d} · mapped trading session: {mapped_sessions[0]} · T0 is the mapped session. Returns are measured from the prior session's close.")
+        else:
+            st.caption(f"{event_type} · selected release date: {event_date:%Y-%m-%d}. Some instruments mapped to different next available sessions; check the Event session column.")
+
+        chosen_return_col = f"T+{post_sessions} return (%)"
+        result_col1, result_col2, result_col3 = st.columns(3)
+        sectors_only_df = event_df[event_df["Group"] == "Sector"]
+        if not sectors_only_df.empty:
+            best = sectors_only_df.sort_values(chosen_return_col, ascending=False).iloc[0]
+            worst = sectors_only_df.sort_values(chosen_return_col, ascending=True).iloc[0]
+            result_col1.metric(f"Best sector · T+{post_sessions}", best["Instrument"], f"{best[chosen_return_col]:+.2f}%")
+            result_col2.metric(f"Weakest sector · T+{post_sessions}", worst["Instrument"], f"{worst[chosen_return_col]:+.2f}%")
+        else:
+            result_col1.metric("Sectors included", "No sector data")
+            result_col2.metric("Sectors included", "No sector data")
+        spy_row = event_df[event_df["Ticker"] == "SPY"]
+        result_col3.metric("S&P 500 proxy", f"{spy_row.iloc[0][chosen_return_col]:+.2f}%" if not spy_row.empty else "Not included")
+
+        plot_df = pd.DataFrame(event_paths)
+        if not plot_df.empty:
+            st.markdown("#### Return path around the event")
+            focus_names = ["S&P 500", "Nasdaq 100", "Long Treasuries", "Gold ETF"]
+            if compare_group == "Sectors only":
+                focus_names = ["Information Technology", "Financials", "Energy", "Health Care", "Real Estate"]
+            focus_df = plot_df[plot_df["Instrument"].isin(focus_names)].copy()
+            if focus_df.empty:
+                focus_df = plot_df
+            order = [f"T{i:+d}" if i != 0 else "T0" for i in range(-5, post_sessions + 1)]
+            fig = px.line(
+                focus_df, x="Offset", y="Return from T-1 close (%)", color="Instrument", markers=True,
+                hover_data={"Instrument": True, "Ticker": True, "Session": True, "Offset": False, "Return from T-1 close (%)": ":+.2f"},
+            )
+            fig.update_layout(
+                template="plotly_dark", paper_bgcolor="#0B1220", plot_bgcolor="#0B1220",
+                font=dict(color="#F8FAFC", size=11), height=340,
+                margin=dict(l=8, r=8, t=16, b=35), legend_title_text="",
+                hoverlabel=dict(bgcolor="#172033", bordercolor="#475569", font=dict(color="#FFFFFF", size=12)),
+            )
+            fig.update_xaxes(tickmode="array", tickvals=list(range(-5, post_sessions + 1)), ticktext=order, title=None, color="#F8FAFC", gridcolor="rgba(148,163,184,.15)")
+            fig.update_yaxes(title="Return vs T-1 close (%)", color="#F8FAFC", gridcolor="rgba(148,163,184,.20)", zeroline=True, zerolinecolor="#64748B")
+            st.plotly_chart(fig, width="stretch", theme=None, config={"responsive": True, "displayModeBar": False})
+
+        st.markdown(f"#### Sector and benchmark comparison · {chosen_return_col}")
+        display_event = event_df.sort_values(chosen_return_col, ascending=False).reset_index(drop=True)
+        st.dataframe(
+            style_market_table(display_event, {"T0 return (%)": "{:+.2f}%", chosen_return_col: "{:+.2f}%", "T-5 to T-1 (%)": "{:+.2f}%"}),
+            width="stretch", hide_index=True,
+        )
+        st.download_button(
+            "Download event-study results (CSV)", display_event.to_csv(index=False).encode("utf-8"),
+            file_name=f"event_study_{event_type.split('/')[0].strip().lower().replace(' ', '_')}_{event_date:%Y%m%d}.csv",
+            mime="text/csv", key="download_macro_event_study",
+        )
+        if skipped:
+            st.caption("Unavailable or insufficient history: " + ", ".join(skipped))
+
+    st.markdown("#### Macro market context")
+    st.caption("These are market proxies, not official macroeconomic releases. They can help frame the event but do not prove causation.")
+    proxy_cols = st.columns(4)
+    proxy_specs = [("US 10Y yield", "^TNX", "yield"), ("US Dollar Index", "DX-Y.NYB", "price"), ("Gold futures", "GC=F", "price"), ("WTI crude", "CL=F", "price")]
+    for col, (label, ticker, kind) in zip(proxy_cols, proxy_specs):
+        with col:
+            proxy = get_history(ticker, "5d", "1d")
+            if not proxy.empty and len(proxy) >= 2:
+                proxy = proxy.sort_values("Date")
+                latest_value = float(proxy["Close"].iloc[-1])
+                previous_value = float(proxy["Close"].iloc[-2])
+                if kind == "yield":
+                    change_text = f"{(latest_value - previous_value) * 100:+.0f} bps"
+                    value_text = f"{latest_value:.2f}%"
+                else:
+                    change_text = f"{((latest_value / previous_value) - 1) * 100:+.2f}%" if previous_value else "—"
+                    value_text = f"{latest_value:,.2f}"
+                st.metric(label, value_text, change_text)
+            else:
+                st.metric(label, "—", "Unavailable")
+    st.caption("Interpretation: compare the event-window returns with the pre-event path, then investigate whether yields, the dollar or commodity prices moved at the same time. Event studies show association, not causation. Historical prices and market proxies come from Yahoo Finance and may be delayed or revised.")
 
 elif page == "ETF Explorer":
     st.markdown("<div class='mi-eyebrow'>RESEARCH</div><h2>ETF Explorer</h2>", unsafe_allow_html=True)
