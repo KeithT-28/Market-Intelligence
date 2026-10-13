@@ -1053,9 +1053,8 @@ if page == "Overview":
             fig_fx.update_yaxes(showgrid=False, automargin=True, tickfont=dict(color="#F8FAFC", size=10))
             st.plotly_chart(fig_fx, width="stretch", theme=None, config={"displayModeBar": False, "responsive": True})
         fx_table = compact_observation_times(fx_data[["Pair", "Ticker", "Last", "Daily %", "As of"]])
-        st.dataframe(
-            style_market_table(fx_table, {"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}),
-            width="stretch", hide_index=True,
+        st.table(
+            style_market_table(fx_table, {"Last": "{:,.4f}", "Daily %": "{:+.2f}%"})
         )
 
     # Keep precious metals distinct from the broader commodity complex.
@@ -1068,7 +1067,7 @@ if page == "Overview":
         metals_data["Instrument"] = pd.Categorical(metals_data["Instrument"], categories=PRECIOUS_METALS, ordered=True)
         metals_data = metals_data.sort_values("Instrument")
         metals_table = compact_observation_times(metals_data[["Instrument", "Ticker", "Last", "Daily %", "As of"]])
-        st.dataframe(style_market_table(metals_table, {"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}), width="stretch", hide_index=True)
+        st.table(style_market_table(metals_table, {"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}))
     st.caption("Precious metals are grouped separately because gold and silver often respond to real yields, the US dollar and safe-haven demand. Platinum is included in the same metals group.")
 
     st.markdown("<div id='overview-commodities' class='mi-section-band' style='--section-accent:#c4b5fd'><span class='mi-section-icon'>◈</span><div><div class='mi-section-kicker'>Real assets</div><h2>Commodity futures</h2></div></div>", unsafe_allow_html=True)
@@ -1079,9 +1078,8 @@ if page == "Overview":
         commodity_data["Commodity"] = commodity_data["Ticker"].map(commodity_names)
         commodity_data = commodity_data.sort_values("Daily %", ascending=False, na_position="last")
         commodity_table = compact_observation_times(commodity_data[["Commodity", "Ticker", "Last", "Daily %", "As of"]])
-        st.dataframe(
-            style_market_table(commodity_table, {"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}),
-            width="stretch", hide_index=True,
+        st.table(
+            style_market_table(commodity_table, {"Last": "{:,.2f}", "Daily %": "{:+.2f}%"})
         )
     st.caption("Commodity futures are grouped into energy, industrial metals and agriculture. This is a practical watchlist, not a verified live ranking by trading volume. Quotes may be delayed; futures contracts differ in units and expiry.")
 
@@ -1148,7 +1146,7 @@ elif page == "G10 FX":
     fx_names = {v: k for k, v in FX_UNIVERSE.items()}
     fx_snap["Pair"] = fx_snap["Ticker"].map(fx_names)
     fx_table = compact_observation_times(fx_snap[["Pair", "Ticker", "Last", "Daily %", "As of"]])
-    st.dataframe(style_market_table(fx_table, {"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}), width="stretch", hide_index=True)
+    st.table(style_market_table(fx_table, {"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}))
 
 elif page == "Commodities":
     st.markdown("<div class='mi-section-band' style='--section-accent:#c4b5fd'><span class='mi-section-icon'>◈</span><div><div class='mi-section-kicker'>Real assets</div><h2>Commodity & metals monitor</h2></div></div>", unsafe_allow_html=True)
@@ -1166,7 +1164,7 @@ elif page == "Commodities":
     commodity_snap["Commodity"] = commodity_snap["Ticker"].map(commodity_names)
     commodity_snap = commodity_snap.sort_values("Daily %", ascending=False, na_position="last")
     commodity_table = compact_observation_times(commodity_snap[["Commodity", "Ticker", "Last", "Daily %", "As of"]])
-    st.dataframe(style_market_table(commodity_table, {"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}), width="stretch", hide_index=True)
+    st.table(style_market_table(commodity_table, {"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}))
     st.caption("Prices are futures quotes from Yahoo Finance and may be delayed. Futures contracts can have different units, expiries and roll characteristics; do not compare nominal prices across commodities directly.")
 
 else:
