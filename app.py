@@ -229,6 +229,32 @@ def color_daily_pct(value):
     return "color: #94a3b8;"
 
 
+
+
+def style_market_table(data: pd.DataFrame, formats: dict | None = None) -> pd.io.formats.style.Styler:
+    """Apply consistent dark terminal styling to all dataframe tables."""
+    styler = data.style
+    if formats:
+        styler = styler.format(formats, na_rep="—")
+    # Explicit cell backgrounds are needed because pandas Styler otherwise
+    # renders light cells that clash with the app's dark theme on some versions.
+    styler = styler.set_properties(**{
+        "background-color": "#111B2E",
+        "color": "#E7EDF7",
+        "border-color": "#26364F",
+    })
+    styler = styler.set_table_styles([
+        {"selector": "th", "props": [
+            ("background-color", "#162238"),
+            ("color", "#E7EDF7"),
+            ("border-color", "#26364F"),
+        ]},
+        {"selector": "td", "props": [("border-color", "#26364F")]},
+    ], overwrite=False)
+    if "Daily %" in data.columns:
+        styler = styler.map(color_daily_pct, subset=["Daily %"])
+    return styler
+
 def format_price(value, ticker: str) -> str:
     if pd.isna(value):
         return "—"
@@ -323,7 +349,7 @@ def render_instrument(ticker: str, period_label: str, name: str = ""):
         return_data = get_return_history(ticker)
     table = returns_table(return_data if not return_data.empty else data)
     st.dataframe(
-        table.style.format({"Reference close": "{:,.4f}", "Latest close": "{:,.4f}", "Return (%)": "{:+.2f}%"}, na_rep="—"),
+        style_market_table(table, {"Reference close": "{:,.4f}", "Latest close": "{:,.4f}", "Return (%)": "{:+.2f}%"}),
         use_container_width=True, hide_index=True
     )
     csv = table.to_csv(index=False).encode("utf-8")
@@ -385,7 +411,7 @@ def render_explorer_view(ticker: str, period_label: str, name: str = ""):
             return_data = get_return_history(ticker)
         table = returns_table(return_data if not return_data.empty else data)
         st.dataframe(
-            table[["Period", "Reference date", "Return (%)"]].style.format({"Return (%)": "{:+.2f}%"}, na_rep="—"),
+            style_market_table(table[["Period", "Reference date", "Return (%)"]], {"Return (%)": "{:+.2f}%"}),
             use_container_width=True, hide_index=True
         )
         csv = table.to_csv(index=False).encode("utf-8")
@@ -454,9 +480,10 @@ if page == "Overview":
     if not etf_markets.empty:
         etf_markets["Instrument"] = etf_markets["Ticker"].map(display_names).fillna(etf_markets["Ticker"])
         st.dataframe(
-            etf_markets[["Instrument", "Ticker", "Last", "Daily %", "As of"]].style.format(
-                {"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}, na_rep="—"
-            ).map(color_daily_pct, subset=["Daily %"]),
+            style_market_table(
+                etf_markets[["Instrument", "Ticker", "Last", "Daily %", "As of"]],
+                {"Last": "{:,.4f}", "Daily %": "{:+.2f}%"},
+            ),
             use_container_width=True,
             hide_index=True,
         )
@@ -469,52 +496,61 @@ if page == "Overview":
         sector_data["Sector"] = sector_data["Ticker"].map(name_by_ticker)
         sector_data = sector_data.sort_values("Daily %", ascending=False, na_position="last")
         # Ranked bar chart provides an immediate view of market leadership.
-        chart_sector = sector_data.dropna(subset=["Daily %"]).sort_values("Daily %", ascending=True)
+        chart_sector = sector_data.dropna(subset=["Daily %"]).sort_values("Daily %", ascending=True).copy()
         if not chart_sector.empty:
+            chart_sector["Chart sector"] = chart_sector["Sector"].replace({
+                "Information Technology": "Info Technology",
+                "Consumer Discretionary": "Cons. Discretionary",
+                "Communication Services": "Communication Svcs",
+                "Consumer Staples": "Consumer Staples",
+            })
             bar_colors = ["#34d399" if x >= 0 else "#fb7185" for x in chart_sector["Daily %"]]
+            sector_labels = [f"{x:+.2f}%" if abs(x) >= 0.15 else "" for x in chart_sector["Daily %"]]
             fig_sector = go.Figure(go.Bar(
-                x=chart_sector["Daily %"], y=chart_sector["Sector"], orientation="h",
-                marker_color=bar_colors,
-                text=[f"{x:+.2f}%" for x in chart_sector["Daily %"]], textposition="outside",
+                x=chart_sector["Daily %"], y=chart_sector["Chart sector"], orientation="h",
+                marker_color=bar_colors, text=sector_labels, textposition="inside",
+                insidetextanchor="end", cliponaxis=False,
                 hovertemplate="%{y}<br>Daily move: %{x:+.2f}%<extra></extra>",
             ))
             fig_sector.update_layout(
-                template="plotly_dark", height=390, margin=dict(l=5, r=48, t=12, b=5),
+                template="plotly_dark", height=410, margin=dict(l=8, r=12, t=8, b=8),
                 xaxis_title="Daily change (%)", yaxis_title=None, showlegend=False,
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#cbd5e1", size=12),
+                font=dict(color="#cbd5e1", size=11),
             )
             fig_sector.update_xaxes(gridcolor="rgba(148,163,184,.14)", zeroline=True, zerolinecolor="#64748b")
             fig_sector.update_yaxes(showgrid=False, automargin=True)
             st.plotly_chart(fig_sector, use_container_width=True, config={"displayModeBar": False})
-        st.dataframe(sector_data[["Sector", "Ticker", "Last", "Daily %", "As of"]].style.format({"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}, na_rep="—").map(color_daily_pct, subset=["Daily %"]), use_container_width=True, hide_index=True)
+        st.dataframe(style_market_table(sector_data[["Sector", "Ticker", "Last", "Daily %", "As of"]], {"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}), use_container_width=True, hide_index=True)
 
     st.markdown("<div class='mi-eyebrow'>CURRENCY MARKETS</div><h2>FX performance</h2>", unsafe_allow_html=True)
     fx_data = snap.loc[snap["Ticker"].isin(fx_tickers)].copy()
     if not fx_data.empty:
         fx_data["Pair"] = fx_data["Ticker"].map(display_names).fillna(fx_data["Ticker"])
-        fx_chart = fx_data.dropna(subset=["Daily %"]).sort_values("Daily %", ascending=True)
+        fx_chart = fx_data.dropna(subset=["Daily %"]).sort_values("Daily %", ascending=True).copy()
         if not fx_chart.empty:
             fx_colors = ["#34d399" if x >= 0 else "#fb7185" for x in fx_chart["Daily %"]]
+            fx_labels = [f"{x:+.2f}%" if abs(x) >= 0.15 else "" for x in fx_chart["Daily %"]]
             fig_fx = go.Figure(go.Bar(
                 x=fx_chart["Daily %"], y=fx_chart["Pair"], orientation="h",
-                marker_color=fx_colors,
-                text=[f"{x:+.2f}%" for x in fx_chart["Daily %"]], textposition="outside",
+                marker_color=fx_colors, text=fx_labels, textposition="inside",
+                insidetextanchor="end", cliponaxis=False,
                 hovertemplate="%{y}<br>Daily move: %{x:+.2f}%<extra></extra>",
             ))
             fig_fx.update_layout(
-                template="plotly_dark", height=320, margin=dict(l=5, r=45, t=8, b=5),
+                template="plotly_dark", height=340, margin=dict(l=8, r=12, t=8, b=8),
                 xaxis_title="Daily change (%)", yaxis_title=None, showlegend=False,
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#cbd5e1", size=12),
+                font=dict(color="#cbd5e1", size=11),
             )
             fig_fx.update_xaxes(gridcolor="rgba(148,163,184,.14)", zeroline=True, zerolinecolor="#64748b")
             fig_fx.update_yaxes(showgrid=False, automargin=True)
             st.plotly_chart(fig_fx, use_container_width=True, config={"displayModeBar": False})
         st.dataframe(
-            fx_data[["Pair", "Ticker", "Last", "Daily %", "As of"]].style.format(
-                {"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}, na_rep="—"
-            ).map(color_daily_pct, subset=["Daily %"]),
+            style_market_table(
+                fx_data[["Pair", "Ticker", "Last", "Daily %", "As of"]],
+                {"Last": "{:,.4f}", "Daily %": "{:+.2f}%"},
+            ),
             use_container_width=True,
             hide_index=True,
         )
@@ -562,7 +598,7 @@ elif page == "Sector Monitor":
     company_tickers = SECTOR_COMPANIES[sector]
     company_snap = get_snapshot(tuple(company_tickers))
     company_snap = company_snap.sort_values("Daily %", ascending=False, na_position="last")
-    st.dataframe(company_snap.style.format({"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}, na_rep="—").map(color_daily_pct, subset=["Daily %"]), use_container_width=True, hide_index=True)
+    st.dataframe(style_market_table(company_snap, {"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}), use_container_width=True, hide_index=True)
     selected_company = st.selectbox("Open company chart", company_tickers)
     render_instrument(selected_company, period_label)
 
@@ -576,7 +612,7 @@ elif page == "G10 FX":
     fx_snap = get_snapshot(tuple(dict.fromkeys(FX_UNIVERSE.values())))
     fx_names = {v: k for k, v in FX_UNIVERSE.items()}
     fx_snap["Pair"] = fx_snap["Ticker"].map(fx_names)
-    st.dataframe(fx_snap[["Pair", "Ticker", "Last", "Daily %", "As of"]].style.format({"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}, na_rep="—").map(color_daily_pct, subset=["Daily %"]), use_container_width=True, hide_index=True)
+    st.dataframe(style_market_table(fx_snap[["Pair", "Ticker", "Last", "Daily %", "As of"]], {"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}), use_container_width=True, hide_index=True)
 
 else:
     st.markdown("<div class='mi-eyebrow'>CHARTING & RETURNS</div><h2>Instrument Explorer</h2>", unsafe_allow_html=True)
