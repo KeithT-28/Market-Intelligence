@@ -76,7 +76,6 @@ FX_UNIVERSE = {
     "NZD/USD": "NZDUSD=X",
     "USD/NOK": "NOK=X",
     "USD/SEK": "SEK=X",
-    "USD/JPY (alternate feed)": "JPY=X",
 }
 
 PERIOD_OPTIONS = {
@@ -340,7 +339,7 @@ st.info("Data notice: this starter version uses Yahoo Finance via yfinance. Quot
 
 if page == "Overview":
     st.markdown("### Market snapshot")
-    overview_tickers = ("^GSPC", "SPY", "QQQ", "IWM", "TLT", "GLD", "EURUSD=X", "JPY=X", "GBPUSD=X", "AUDUSD=X")
+    overview_tickers = tuple(dict.fromkeys(("^GSPC", "SPY", "QQQ", "IWM", "TLT", "GLD", *FX_UNIVERSE.values())))
     snap = get_snapshot(overview_tickers)
     display_names = {
         "^GSPC": "S&P 500", "SPY": "SPY", "QQQ": "QQQ", "IWM": "IWM",
@@ -366,7 +365,7 @@ if page == "Overview":
         st.warning("S&P 500 data is currently unavailable.")
 
     # Keep ETF performance separate from FX performance for easier scanning.
-    fx_tickers = ("EURUSD=X", "JPY=X", "GBPUSD=X", "AUDUSD=X")
+    fx_tickers = tuple(dict.fromkeys(FX_UNIVERSE.values()))
     etf_tickers = ("SPY", "QQQ", "IWM", "TLT", "GLD")
 
     st.markdown("### Major ETFs")
@@ -403,8 +402,30 @@ if page == "Overview":
         )
 
     st.markdown("### Quick chart")
-    quick = st.selectbox("Choose a market instrument", ["^GSPC", "SPY", "QQQ", "IWM", "TLT", "GLD", "EURUSD=X", "JPY=X"])
-    render_instrument(quick, period_label)
+    st.caption("Choose an asset group first, then select the instrument you want to inspect.")
+    quick_group = st.selectbox(
+        "Asset group",
+        ["Major ETFs", "FX", "Sectors"],
+        key="overview_quick_chart_group",
+    )
+    if quick_group == "Major ETFs":
+        quick_options = {
+            "SPY — S&P 500 ETF": "SPY",
+            "QQQ — Nasdaq-100 ETF": "QQQ",
+            "IWM — Russell 2000 ETF": "IWM",
+            "TLT — 20+ Year Treasury ETF": "TLT",
+            "GLD — Gold ETF": "GLD",
+        }
+    elif quick_group == "FX":
+        quick_options = FX_UNIVERSE
+    else:
+        quick_options = {f"{sector} ({ticker})": ticker for sector, ticker in SECTOR_ETFS.items()}
+    quick_label = st.selectbox(
+        "Instrument",
+        list(quick_options.keys()),
+        key="overview_quick_chart_instrument",
+    )
+    render_instrument(quick_options[quick_label], period_label, quick_label)
 
 elif page == "ETF Explorer":
     st.markdown("### ETF Explorer")
