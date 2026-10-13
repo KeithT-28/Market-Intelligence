@@ -168,6 +168,13 @@ PERIOD_OPTIONS = {
 st.markdown(
     """
     <style>
+      .mi-trend-summary-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:10px 0 8px; }
+      .mi-trend-tile { min-width:0; border:1px solid #26364F; border-radius:12px; padding:10px 9px; background:linear-gradient(145deg,#142036,#101827); }
+      .mi-trend-tile-label { color:#9FB2CB; font-size:10px; font-weight:800; letter-spacing:.07em; line-height:1.3; }
+      .mi-trend-tile-name { color:#E7EDF7; font-size:12px; font-weight:700; margin-top:7px; line-height:1.3; overflow-wrap:anywhere; }
+      .mi-trend-tile-detail { color:#6EE7A0; font-size:16px; font-weight:800; margin-top:4px; }
+      .mi-trend-tile-ticker { color:#91A2BA; font-size:10px; margin-top:2px; }
+      @media (max-width: 520px) { .mi-trend-summary-grid { gap:6px; } .mi-trend-tile { padding:8px 6px; } .mi-trend-tile-label { font-size:9px; letter-spacing:.02em; } .mi-trend-tile-name { font-size:11px; } .mi-trend-tile-detail { font-size:14px; } }
     :root {
       --mi-bg: #0b1120;
       --mi-panel: #111b2e;
@@ -893,7 +900,6 @@ if page == "Overview":
     if trend_data.empty or trend_data["30D %"].notna().sum() == 0:
         st.warning("The 30-day dataset is temporarily unavailable. Please try refreshing market data.")
     else:
-        metric_cols = st.columns(4)
         valid_trends = trend_data.dropna(subset=["30D %"]).copy()
         leaders = valid_trends.sort_values("30D %", ascending=False).head(1)
         emerging = valid_trends.dropna(subset=["Acceleration"]).sort_values("Acceleration", ascending=False).head(1)
@@ -901,37 +907,34 @@ if page == "Overview":
         activity = activity.loc[activity["Volume ratio"] >= 1.5].sort_values("Volume ratio", ascending=False)
         positive_share = (valid_trends["30D %"] > 0).mean() * 100 if not valid_trends.empty else None
 
-        with metric_cols[0]:
-            if not leaders.empty:
-                item = leaders.iloc[0]
-                st.metric("30D leader", item["Company"], f"{item['30D %']:+.2f}%")
-                st.caption(f"{item['Ticker']} · {item['Sector']}")
-            else:
-                st.metric("30D leader", "—")
-        with metric_cols[1]:
-            if not emerging.empty:
-                item = emerging.iloc[0]
-                st.metric("Momentum improving", item["Company"], f"{item['Acceleration']:+.2f} pp")
-                st.caption(f"{item['Ticker']} · {item['Sector']}")
-            else:
-                st.metric("Momentum improving", "—")
-        with metric_cols[2]:
-            if not activity.empty:
-                item = activity.iloc[0]
-                st.metric("Unusual volume", item["Company"], f"{item['Volume ratio']:.1f}× average")
-                st.caption(f"{item['Ticker']} · {item['Sector']}")
-            else:
-                st.metric("Unusual volume", "None flagged")
-        with metric_cols[3]:
-            st.metric("Positive 30D", f"{positive_share:.0f}%" if positive_share is not None else "—", "of available instruments")
+        # Compact HTML summary strip stays in three columns on narrow mobile screens.
+        leader = leaders.iloc[0] if not leaders.empty else None
+        momentum = emerging.iloc[0] if not emerging.empty else None
+        unusual = activity.iloc[0] if not activity.empty else None
+        def summary_tile(label, name, ticker, detail):
+            return (
+                "<div class='mi-trend-tile'><div class='mi-trend-tile-label'>" + str(label) +
+                "</div><div class='mi-trend-tile-name'>" + str(name) +
+                "</div><div class='mi-trend-tile-detail'>" + str(detail) +
+                "</div><div class='mi-trend-tile-ticker'>" + str(ticker) + "</div></div>"
+            )
+        leader_html = summary_tile("30D LEADER", leader["Company"], leader["Ticker"], f"{leader['30D %']:+.1f}%") if leader is not None else summary_tile("30D LEADER", "—", "", "No data")
+        momentum_html = summary_tile("MOMENTUM", momentum["Company"], momentum["Ticker"], f"{momentum['Acceleration']:+.1f} pp") if momentum is not None else summary_tile("MOMENTUM", "—", "", "No data")
+        unusual_html = summary_tile("VOLUME ALERT", unusual["Company"], unusual["Ticker"], f"{unusual['Volume ratio']:.1f}× avg") if unusual is not None else summary_tile("VOLUME ALERT", "None", "", "No alert")
+        st.markdown(
+            "<div class='mi-trend-summary-grid'>" + leader_html + momentum_html + unusual_html + "</div>",
+            unsafe_allow_html=True,
+        )
+        st.caption(f"{positive_share:.0f}% of instruments with available data have positive 30D returns." if positive_share is not None else "Positive-return breadth unavailable.")
 
-        # Mobile-first filters: keep the default view short and let users open filters only when needed.
-        with st.expander("Filter and rank instruments", expanded=False):
-            search_query = st.text_input(
-                "Search company or ticker",
-                placeholder="e.g. AMD, Crown Castle, MPC",
-                key="trend_search_query",
-            ).strip().lower()
+        # Search is visible; advanced filters remain tucked away to save mobile space.
+        search_query = st.text_input(
+            "Find a stock, ticker or instrument",
+            placeholder="Search e.g. AMD, Crown Castle, MPC",
+            key="trend_search_query",
+            label_visibility="collapsed",
+        ).strip().lower()
+        with st.expander("Filters and ranking", expanded=False):
             filter_cols = st.columns(2)
             with filter_cols[0]:
                 trend_asset_filter = st.selectbox(
@@ -940,10 +943,9 @@ if page == "Overview":
                     key="trend_asset_class_filter",
                 )
             with filter_cols[1]:
-                industry_options = ["All industries"] + list(SECTOR_ETFS.keys())
                 trend_industry_filter = st.selectbox(
                     "Industry / sector",
-                    industry_options,
+                    ["All industries"] + list(SECTOR_ETFS.keys()),
                     key="trend_industry_filter",
                 )
             with filter_cols[0]:
@@ -958,12 +960,13 @@ if page == "Overview":
                     ["30D %", "5D %", "Daily %", "Acceleration", "Volume ratio", "20D volatility"],
                     key="trend_sort_metric",
                 )
+            trend_direction = st.radio(
+                "Direction", ["Top gainers", "Top losers", "All"], horizontal=True,
+                key="trend_direction_filter",
+            )
             result_limit = st.selectbox(
-                "Chart size",
-                [5, 10, 15, "All filtered"],
-                index=0,
+                "Results to show", [5, 10, 15, "All filtered"], index=0,
                 key="trend_chart_size",
-                help="Choose how many ranked instruments appear in the chart.",
             )
 
         filtered_trends = trend_data.copy()
@@ -971,6 +974,7 @@ if page == "Overview":
             search_mask = (
                 filtered_trends["Company"].astype(str).str.lower().str.contains(search_query, regex=False)
                 | filtered_trends["Ticker"].astype(str).str.lower().str.contains(search_query, regex=False)
+                | filtered_trends["Instrument"].astype(str).str.lower().str.contains(search_query, regex=False)
             )
             filtered_trends = filtered_trends.loc[search_mask]
         if trend_asset_filter != "All asset classes":
@@ -979,19 +983,18 @@ if page == "Overview":
             filtered_trends = filtered_trends.loc[filtered_trends["Sector"] == trend_industry_filter]
         if trend_signal_filter != "All signals":
             filtered_trends = filtered_trends.loc[filtered_trends["Signal"] == trend_signal_filter]
-        filtered_trends = filtered_trends.sort_values(trend_sort, ascending=False, na_position="last")
+        ascending = trend_direction == "Top losers"
+        filtered_trends = filtered_trends.sort_values(trend_sort, ascending=ascending, na_position="last")
+        if trend_direction != "All":
+            filtered_trends = filtered_trends.loc[filtered_trends[trend_sort] >= 0] if trend_direction == "Top gainers" else filtered_trends.loc[filtered_trends[trend_sort] < 0]
 
-        st.caption(f"Showing {len(filtered_trends)} instruments · ranked by {trend_sort}")
+        st.caption(f"{len(filtered_trends)} instruments · sorted by {trend_sort}")
         chart_rows = filtered_trends.dropna(subset=[trend_sort]).copy()
         if result_limit != "All filtered":
             chart_rows = chart_rows.head(int(result_limit))
-        # Reverse rows so the highest-ranked item appears at the top of the horizontal chart.
         chart_rows = chart_rows.iloc[::-1]
         if not chart_rows.empty:
-            chart_labels = [
-                f"{row['Company']} ({row['Ticker']}) · {row['Sector']}"
-                for _, row in chart_rows.iterrows()
-            ]
+            chart_labels = [f"{row['Ticker']} · {row['Company']}" for _, row in chart_rows.iterrows()]
             metric_values = chart_rows[trend_sort].astype(float)
             if trend_sort == "Volume ratio":
                 value_labels = [f"{value:.1f}×" for value in metric_values]
@@ -1011,16 +1014,14 @@ if page == "Overview":
                 hover_label = trend_sort
             colors = ["#34d399" if value >= 0 else "#fb7185" for value in metric_values]
             chart = go.Figure(go.Bar(
-                x=metric_values, y=chart_labels, orientation="h",
-                marker_color=colors,
-                text=value_labels,
-                textposition="inside", insidetextanchor="end", cliponaxis=True,
+                x=metric_values, y=chart_labels, orientation="h", marker_color=colors,
+                text=value_labels, textposition="inside", insidetextanchor="end", cliponaxis=True,
                 textfont=dict(color="#0b1120", size=10),
                 hovertemplate=f"%{{y}}<br>{hover_label}: %{{x:.2f}}<extra></extra>",
             ))
             max_abs = max([abs(float(x)) for x in metric_values] + [1.0])
             chart.update_layout(
-                template="plotly_dark", height=max(230, 28 * len(chart_rows)),
+                template="plotly_dark", height=max(210, 27 * len(chart_rows)),
                 margin=dict(l=4, r=8, t=4, b=8), xaxis_title=axis_title,
                 yaxis_title=None, showlegend=False, paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#e7edf7", size=10), bargap=.22,
@@ -1034,6 +1035,32 @@ if page == "Overview":
             st.plotly_chart(chart, width="stretch", theme=None, config={"displayModeBar": False, "responsive": True})
         else:
             st.info("No instruments match these filters. Try a broader industry, asset class or search term.")
+
+        # Select a result to reveal its price chart and synchronize the news investigation panel.
+        if not filtered_trends.empty:
+            inspect_options = {}
+            for _, row in filtered_trends.iterrows():
+                label = f"{row['Company']} ({row['Ticker']}) · {row['Sector']}"
+                inspect_options[label] = str(row["Ticker"])
+            inspect_labels = list(inspect_options.keys())
+            selected_inspect_label = st.selectbox(
+                "Inspect instrument", inspect_labels, key="trend_inspect_selection",
+                help="Choose an instrument to open its price chart and news context below.",
+            )
+            selected_inspect_ticker = inspect_options[selected_inspect_label]
+            selected_inspect_row = filtered_trends.loc[filtered_trends["Ticker"].astype(str) == selected_inspect_ticker].iloc[0]
+            with st.expander(f"Price chart · {selected_inspect_ticker}", expanded=False):
+                st.caption(f"{selected_inspect_row['Company']} · {selected_inspect_row['Sector']} · {selected_inspect_row['Asset class']}")
+                with st.spinner(f"Loading {selected_inspect_ticker} price history…"):
+                    inspect_history = get_history(selected_inspect_ticker, "3mo", "1d")
+                if not inspect_history.empty:
+                    render_price_chart(inspect_history.sort_values("Date").reset_index(drop=True), selected_inspect_ticker, "3 months · daily")
+                else:
+                    st.info("Price history is unavailable for this instrument right now.")
+            # Keep the headline investigation selection in sync with the selected scanner result.
+            st.session_state["trend_inspect_ticker"] = selected_inspect_ticker
+        else:
+            st.session_state["trend_inspect_ticker"] = None
 
         visible_cols = [
             "Company", "Ticker", "Sector", "Asset class", "Last", "Daily %", "5D %", "30D %",
@@ -1067,8 +1094,7 @@ if page == "Overview":
             "Price signals are observations, not explanations. Headlines can provide clues, but do not prove causation; "
             "Yahoo Finance coverage may be incomplete or delayed."
         )
-        candidate_rows = valid_trends.loc[valid_trends["Ticker"].notna()].copy()
-        candidate_rows = candidate_rows.loc[candidate_rows["Asset class"].isin(["Stocks", "ETFs", "Sectors", "Precious Metals", "Commodities"])]
+        candidate_rows = filtered_trends.loc[filtered_trends["Ticker"].notna()].copy()
         candidate_rows = candidate_rows.sort_values("30D %", ascending=False, na_position="last")
         candidate_options = {}
         for _, candidate in candidate_rows.iterrows():
@@ -1078,10 +1104,13 @@ if page == "Overview":
             candidate_options[label] = ticker
 
         if candidate_options:
-            selected_news_label = st.selectbox(
-                "Instrument", list(candidate_options.keys()), key="why_moving_ticker"
+            preferred_ticker = st.session_state.get("trend_inspect_ticker")
+            selected_news_ticker = preferred_ticker if preferred_ticker in candidate_options.values() else next(iter(candidate_options.values()))
+            selected_news_label = next(
+                (label for label, ticker in candidate_options.items() if ticker == selected_news_ticker),
+                selected_news_ticker,
             )
-            selected_news_ticker = candidate_options[selected_news_label]
+            st.caption(f"Investigating: **{selected_news_label}** · selected in the market scanner above")
             selected_news_row = candidate_rows.loc[
                 candidate_rows["Ticker"].astype(str) == selected_news_ticker
             ].iloc[0]
@@ -1117,7 +1146,7 @@ if page == "Overview":
                         st.caption(f"Possible theme: {theme} · {news_item['provider']} · {news_item['published']}")
             else:
                 company_name = COMPANY_DISPLAY_NAMES.get(selected_news_ticker, selected_news_ticker)
-                search_query = quote_plus(f'"{company_name}" {selected_news_ticker} stock news')
+                search_query = quote_plus(f'"{company_name}" {selected_news_ticker} market news')
                 yahoo_url = f"https://finance.yahoo.com/quote/{quote_plus(selected_news_ticker)}/news/"
                 google_news_url = f"https://news.google.com/search?q={search_query}"
                 st.info(
