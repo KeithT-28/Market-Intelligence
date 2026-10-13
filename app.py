@@ -178,12 +178,13 @@ st.markdown(
     .mi-jump-nav { position:sticky; top:.25rem; z-index:50; display:flex; gap:.45rem; overflow-x:auto; white-space:nowrap; padding:.55rem; margin:.6rem 0 1rem; border:1px solid #26364f; border-radius:12px; background:rgba(17,27,46,.96); backdrop-filter:blur(10px); }
     .mi-jump-nav a { display:inline-block; text-decoration:none !important; color:#dbeafe !important; background:#172944; border:1px solid #294568; border-radius:8px; padding:.42rem .7rem; font-size:.82rem; font-weight:650; }
     .mi-jump-nav a:active, .mi-jump-nav a:hover { background:#24456d; }
-    .mi-section-band { --section-accent:#60a5fa; display:flex; align-items:center; gap:.75rem; padding:.8rem .85rem; margin:1.35rem 0 .7rem; border:1px solid var(--mi-border); border-left:4px solid var(--section-accent); border-radius:11px; background:linear-gradient(100deg, color-mix(in srgb, var(--section-accent) 10%, #111b2e), #111b2e 70%); scroll-margin-top:5rem; }
+    .mi-section-band { --section-accent:#60a5fa; display:flex; align-items:center; gap:.75rem; padding:.8rem .85rem; margin:1.35rem 0 .7rem; border:1px solid var(--mi-border); border-left:4px solid var(--section-accent); border-radius:11px; background:linear-gradient(100deg, color-mix(in srgb, var(--section-accent) 10%, #111b2e), #111b2e 70%); scroll-margin-top:7rem; }
     .mi-section-icon { display:flex; align-items:center; justify-content:center; width:2.4rem; height:2.4rem; flex:0 0 2.4rem; border-radius:9px; background:color-mix(in srgb, var(--section-accent) 18%, #111b2e); color:var(--section-accent); font-size:1.25rem; }
-    .mi-section-kicker { color:var(--section-accent); font-size:.68rem; font-weight:800; letter-spacing:.13em; text-transform:uppercase; }
+    .mi-section-kicker { color:var(--section-accent) !important; opacity:1 !important; font-size:.72rem; font-weight:800; letter-spacing:.13em; text-transform:uppercase; text-shadow:0 0 1px rgba(255,255,255,.10); }
     .mi-section-band h2 { margin:.08rem 0 0 !important; font-size:1.18rem !important; }
     @media (max-width: 768px) {
-      .block-container { padding: .7rem .7rem 1.5rem .7rem; }
+      .block-container { padding: 1rem .7rem 1.5rem .7rem; }
+      .mi-section-band { scroll-margin-top: 7.5rem; }
       [data-testid="stMetric"] { padding: 10px 11px; }
       [data-testid="stMetricValue"] { font-size: 1.35rem !important; }
       [data-testid="stDataFrame"] { font-size: .82rem; }
