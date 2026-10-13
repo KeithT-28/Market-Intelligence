@@ -261,6 +261,20 @@ def format_price(value, ticker: str) -> str:
     return f"{value:,.4f}" if "=X" in ticker or ticker.endswith("=X") else f"{value:,.2f}"
 
 
+def compact_observation_times(data: pd.DataFrame) -> pd.DataFrame:
+    """Shorten provider observation timestamps for narrow mobile tables."""
+    result = data.copy()
+    if "As of" in result.columns:
+        def short_time(value):
+            try:
+                stamp = pd.to_datetime(value, errors="raise")
+                return stamp.strftime("%d %b %H:%M")
+            except (TypeError, ValueError, OverflowError):
+                return value
+        result["As of"] = result["As of"].map(short_time)
+    return result
+
+
 def returns_table(data: pd.DataFrame) -> pd.DataFrame:
     """Returns based on latest available adjusted close and historical reference."""
     if data.empty or "Close" not in data:
@@ -322,7 +336,7 @@ def render_price_chart(data: pd.DataFrame, ticker: str, interval_label: str):
     )
     fig.update_xaxes(showgrid=False)
     fig.update_yaxes(gridcolor="rgba(128,128,128,0.15)")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     st.caption(f"Chart interval: {interval_label}. Historical data and quote timing depend on Yahoo Finance coverage; not an exchange-licensed real-time feed.")
 
 
@@ -401,7 +415,7 @@ def render_explorer_view(ticker: str, period_label: str, name: str = ""):
         )
         fig.update_xaxes(showgrid=False, showline=False, ticks="")
         fig.update_yaxes(showgrid=True, gridcolor="rgba(128,128,128,0.18)", zeroline=False)
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False, "responsive": True})
         st.caption("Illustrative layout · actual chart uses retrieved market history. Data may be delayed and is not guaranteed real-time.")
 
     show_returns = st.checkbox("Show return calculations table", value=True, key=f"show_returns_{ticker}")
@@ -445,10 +459,11 @@ st.markdown("<div class='mi-section-note'>Market data is sourced via Yahoo Finan
 
 if page == "Overview":
     st.markdown("<div class='mi-eyebrow'>MARKET PULSE</div><h2>Market snapshot</h2>", unsafe_allow_html=True)
-    overview_tickers = tuple(dict.fromkeys(("^GSPC", "SPY", "QQQ", "IWM", "TLT", "GLD", *FX_UNIVERSE.values())))
+    overview_tickers = tuple(dict.fromkeys(("^GSPC", "^NDX", "^TNX", "DX-Y.NYB", "SPY", "QQQ", "IWM", "TLT", "GLD", *FX_UNIVERSE.values())))
     snap = get_snapshot(overview_tickers)
     display_names = {
-        "^GSPC": "S&P 500", "SPY": "SPY", "QQQ": "QQQ", "IWM": "IWM",
+        "^GSPC": "S&P 500", "^NDX": "Nasdaq 100", "^TNX": "US 10Y Yield", "DX-Y.NYB": "US Dollar Index",
+        "SPY": "SPY", "QQQ": "QQQ", "IWM": "IWM",
         "TLT": "TLT", "GLD": "GLD", "EURUSD=X": "EUR/USD", "JPY=X": "USD/JPY",
         "GBPUSD=X": "GBP/USD", "AUDUSD=X": "AUD/USD", "CHF=X": "USD/CHF",
         "CAD=X": "USD/CAD", "NZDUSD=X": "NZD/USD", "NOK=X": "USD/NOK", "SEK=X": "USD/SEK",
@@ -467,9 +482,43 @@ if page == "Overview":
             f"{index_change:+.2f}%" if pd.notna(index_change) else "—",
         )
         if pd.notna(row.get("As of")):
-            st.caption(f"Latest available observation: {row['As of']} · Data may be delayed; not guaranteed real-time.")
+            observation_time = compact_observation_times(index_row)["As of"].iloc[0]
+            st.caption(f"S&P 500 observation: {observation_time} · Data may be delayed; not guaranteed real-time.")
     else:
         st.warning("S&P 500 data is currently unavailable.")
+
+    # Compact cross-asset indicators add context without crowding the mobile view.
+    metric_cols = st.columns(3)
+    with metric_cols[0]:
+        row = snap.loc[snap["Ticker"] == "^NDX"]
+        if not row.empty and pd.notna(row.iloc[0]["Last"]):
+            item = row.iloc[0]
+            st.metric("Nasdaq 100", f"{item['Last']:,.2f}", f"{item['Daily %']:+.2f}%" if pd.notna(item["Daily %"]) else "—")
+        else:
+            st.metric("Nasdaq 100", "—", "Unavailable")
+    with metric_cols[1]:
+        # Yahoo's ^TNX is quoted as yield multiplied by ten (e.g. 42.0 = 4.20%).
+        # Convert the latest and previous observations to a yield and basis-point move.
+        tnx_hist = get_history("^TNX", "5d", "1d")
+        if not tnx_hist.empty:
+            tnx_hist = tnx_hist.sort_values("Date")
+            yield_pct = float(tnx_hist["Close"].iloc[-1]) / 10.0
+            if len(tnx_hist) > 1:
+                yield_change_bps = (float(tnx_hist["Close"].iloc[-1]) - float(tnx_hist["Close"].iloc[-2])) * 10.0
+                delta_text = f"{yield_change_bps:+.1f} bps"
+            else:
+                delta_text = "—"
+            st.metric("US 10Y Yield", f"{yield_pct:.2f}%", delta_text)
+        else:
+            st.metric("US 10Y Yield", "—", "Unavailable")
+    with metric_cols[2]:
+        row = snap.loc[snap["Ticker"] == "DX-Y.NYB"]
+        if not row.empty and pd.notna(row.iloc[0]["Last"]):
+            item = row.iloc[0]
+            st.metric("US Dollar Index", f"{item['Last']:.2f}", f"{item['Daily %']:+.2f}%" if pd.notna(item["Daily %"]) else "—")
+        else:
+            st.metric("US Dollar Index", "—", "Unavailable")
+    st.caption("Table timestamps show the provider's latest observation, not the time this page was refreshed. Quotes are cached for up to 5 minutes; use Refresh data to request new data.")
 
     # Keep ETF performance separate from FX performance for easier scanning.
     fx_tickers = tuple(dict.fromkeys(FX_UNIVERSE.values()))
@@ -479,6 +528,7 @@ if page == "Overview":
     etf_markets = snap.loc[snap["Ticker"].isin(etf_tickers)].copy()
     if not etf_markets.empty:
         etf_markets["Instrument"] = etf_markets["Ticker"].map(display_names).fillna(etf_markets["Ticker"])
+        etf_markets = compact_observation_times(etf_markets)
         st.dataframe(
             style_market_table(
                 etf_markets[["Instrument", "Ticker", "Last", "Daily %", "As of"]],
@@ -495,33 +545,43 @@ if page == "Overview":
     if not sector_data.empty:
         sector_data["Sector"] = sector_data["Ticker"].map(name_by_ticker)
         sector_data = sector_data.sort_values("Daily %", ascending=False, na_position="last")
-        # Ranked bar chart provides an immediate view of market leadership.
+        # Compact ranked bars use abbreviated chart labels; the full names remain in the table.
         chart_sector = sector_data.dropna(subset=["Daily %"]).sort_values("Daily %", ascending=True).copy()
         if not chart_sector.empty:
             chart_sector["Chart sector"] = chart_sector["Sector"].replace({
-                "Information Technology": "Info Technology",
-                "Consumer Discretionary": "Cons. Discretionary",
-                "Communication Services": "Communication Svcs",
-                "Consumer Staples": "Consumer Staples",
+                "Information Technology": "Technology",
+                "Consumer Discretionary": "Cons. Disc.",
+                "Communication Services": "Comm. Services",
+                "Consumer Staples": "Cons. Staples",
+                "Health Care": "Healthcare",
             })
-            bar_colors = ["#34d399" if x >= 0 else "#fb7185" for x in chart_sector["Daily %"]]
-            sector_labels = [f"{x:+.2f}%" if abs(x) >= 0.15 else "" for x in chart_sector["Daily %"]]
+            bar_values = chart_sector["Daily %"].astype(float).tolist()
+            bar_colors = ["#34d399" if x >= 0 else "#fb7185" for x in bar_values]
+            sector_labels = [f"{x:+.2f}%" if abs(x) >= 0.30 else "" for x in bar_values]
+            # Keep labels inside bars to avoid clipping at either chart edge on mobile.
             fig_sector = go.Figure(go.Bar(
-                x=chart_sector["Daily %"], y=chart_sector["Chart sector"], orientation="h",
+                x=bar_values, y=chart_sector["Chart sector"], orientation="h",
                 marker_color=bar_colors, text=sector_labels, textposition="inside",
-                insidetextanchor="end", cliponaxis=False,
+                insidetextanchor="end", cliponaxis=True,
+                textfont=dict(color="#0b1120", size=11),
                 hovertemplate="%{y}<br>Daily move: %{x:+.2f}%<extra></extra>",
             ))
+            max_abs = max([abs(x) for x in bar_values] + [0.5])
             fig_sector.update_layout(
-                template="plotly_dark", height=410, margin=dict(l=8, r=12, t=8, b=8),
+                template="plotly_dark", height=350, margin=dict(l=4, r=6, t=4, b=8),
                 xaxis_title="Daily change (%)", yaxis_title=None, showlegend=False,
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#cbd5e1", size=11),
+                font=dict(color="#cbd5e1", size=10), bargap=0.22,
             )
-            fig_sector.update_xaxes(gridcolor="rgba(148,163,184,.14)", zeroline=True, zerolinecolor="#64748b")
-            fig_sector.update_yaxes(showgrid=False, automargin=True)
-            st.plotly_chart(fig_sector, use_container_width=True, config={"displayModeBar": False})
-        st.dataframe(style_market_table(sector_data[["Sector", "Ticker", "Last", "Daily %", "As of"]], {"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}), use_container_width=True, hide_index=True)
+            fig_sector.update_xaxes(
+                range=[-max_abs * 1.12, max_abs * 1.12],
+                gridcolor="rgba(148,163,184,.14)", zeroline=True, zerolinecolor="#64748b",
+                tickfont=dict(size=10),
+            )
+            fig_sector.update_yaxes(showgrid=False, automargin=True, tickfont=dict(size=10))
+            st.plotly_chart(fig_sector, width="stretch", config={"displayModeBar": False, "responsive": True})
+        sector_table = compact_observation_times(sector_data[["Sector", "Ticker", "Last", "Daily %", "As of"]])
+        st.dataframe(style_market_table(sector_table, {"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}), width="stretch", hide_index=True)
 
     st.markdown("<div class='mi-eyebrow'>CURRENCY MARKETS</div><h2>FX performance</h2>", unsafe_allow_html=True)
     fx_data = snap.loc[snap["Ticker"].isin(fx_tickers)].copy()
@@ -538,21 +598,18 @@ if page == "Overview":
                 hovertemplate="%{y}<br>Daily move: %{x:+.2f}%<extra></extra>",
             ))
             fig_fx.update_layout(
-                template="plotly_dark", height=340, margin=dict(l=8, r=12, t=8, b=8),
+                template="plotly_dark", height=300, margin=dict(l=4, r=6, t=4, b=8),
                 xaxis_title="Daily change (%)", yaxis_title=None, showlegend=False,
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#cbd5e1", size=11),
+                font=dict(color="#cbd5e1", size=10), bargap=0.24,
             )
-            fig_fx.update_xaxes(gridcolor="rgba(148,163,184,.14)", zeroline=True, zerolinecolor="#64748b")
-            fig_fx.update_yaxes(showgrid=False, automargin=True)
-            st.plotly_chart(fig_fx, use_container_width=True, config={"displayModeBar": False})
+            fig_fx.update_xaxes(gridcolor="rgba(148,163,184,.14)", zeroline=True, zerolinecolor="#64748b", tickfont=dict(size=10))
+            fig_fx.update_yaxes(showgrid=False, automargin=True, tickfont=dict(size=10))
+            st.plotly_chart(fig_fx, width="stretch", config={"displayModeBar": False, "responsive": True})
+        fx_table = compact_observation_times(fx_data[["Pair", "Ticker", "Last", "Daily %", "As of"]])
         st.dataframe(
-            style_market_table(
-                fx_data[["Pair", "Ticker", "Last", "Daily %", "As of"]],
-                {"Last": "{:,.4f}", "Daily %": "{:+.2f}%"},
-            ),
-            use_container_width=True,
-            hide_index=True,
+            style_market_table(fx_table, {"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}),
+            width="stretch", hide_index=True,
         )
 
     st.markdown("<div class='mi-eyebrow'>CHARTING</div><h2>Quick chart</h2>", unsafe_allow_html=True)
@@ -598,7 +655,8 @@ elif page == "Sector Monitor":
     company_tickers = SECTOR_COMPANIES[sector]
     company_snap = get_snapshot(tuple(company_tickers))
     company_snap = company_snap.sort_values("Daily %", ascending=False, na_position="last")
-    st.dataframe(style_market_table(company_snap, {"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}), use_container_width=True, hide_index=True)
+    company_snap = compact_observation_times(company_snap)
+    st.dataframe(style_market_table(company_snap, {"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}), width="stretch", hide_index=True)
     selected_company = st.selectbox("Open company chart", company_tickers)
     render_instrument(selected_company, period_label)
 
@@ -612,7 +670,8 @@ elif page == "G10 FX":
     fx_snap = get_snapshot(tuple(dict.fromkeys(FX_UNIVERSE.values())))
     fx_names = {v: k for k, v in FX_UNIVERSE.items()}
     fx_snap["Pair"] = fx_snap["Ticker"].map(fx_names)
-    st.dataframe(style_market_table(fx_snap[["Pair", "Ticker", "Last", "Daily %", "As of"]], {"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}), use_container_width=True, hide_index=True)
+    fx_table = compact_observation_times(fx_snap[["Pair", "Ticker", "Last", "Daily %", "As of"]])
+    st.dataframe(style_market_table(fx_table, {"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}), width="stretch", hide_index=True)
 
 else:
     st.markdown("<div class='mi-eyebrow'>CHARTING & RETURNS</div><h2>Instrument Explorer</h2>", unsafe_allow_html=True)
