@@ -136,6 +136,12 @@ def get_history(ticker: str, period: str, interval: str) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=900, show_spinner=False)
+def get_return_history(ticker: str) -> pd.DataFrame:
+    """Fetch enough daily history to calculate all historical return horizons."""
+    return get_history(ticker, "2y", "1d")
+
+
+@st.cache_data(ttl=900, show_spinner=False)
 def get_snapshot(tickers: tuple) -> pd.DataFrame:
     """Build a simple latest-price snapshot for a set of tickers."""
     rows = []
@@ -247,7 +253,9 @@ def render_instrument(ticker: str, period_label: str, name: str = ""):
     m3.metric("Last data point", pd.Timestamp(data["Date"].iloc[-1]).strftime("%d %b %Y %H:%M"))
     render_price_chart(data, ticker, interval)
     st.markdown("#### Historical returns")
-    table = returns_table(data)
+    with st.spinner("Loading daily history for return calculations…"):
+        return_data = get_return_history(ticker)
+    table = returns_table(return_data if not return_data.empty else data)
     st.dataframe(
         table.style.format({"Reference close": "{:,.4f}", "Latest close": "{:,.4f}", "Return (%)": "{:+.2f}%"}, na_rep="—"),
         use_container_width=True, hide_index=True
@@ -307,7 +315,9 @@ def render_explorer_view(ticker: str, period_label: str, name: str = ""):
     show_returns = st.checkbox("Show return calculations table", value=True, key=f"show_returns_{ticker}")
     if show_returns:
         st.markdown("#### Historical returns")
-        table = returns_table(data)
+        with st.spinner("Loading daily history for return calculations…"):
+            return_data = get_return_history(ticker)
+        table = returns_table(return_data if not return_data.empty else data)
         st.dataframe(
             table[["Period", "Reference date", "Return (%)"]].style.format({"Return (%)": "{:+.2f}%"}, na_rep="—"),
             use_container_width=True, hide_index=True
