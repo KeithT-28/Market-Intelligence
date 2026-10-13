@@ -1542,30 +1542,127 @@ if page == "Overview":
 
 elif page == "Macro & Event Analysis":
     st.markdown("<div class='mi-eyebrow'>MACRO RESEARCH</div><h2>Macro & Event Analysis</h2>", unsafe_allow_html=True)
-    st.caption("Study how US-listed sectors and major ETFs behaved around a historical macro release. Enter the actual publication date from a trusted economic calendar; the app does not assume or invent event dates.")
-    st.info("Before running a study, verify the release date and release time with an official source such as the BLS, BEA or Federal Reserve. A market reaction can begin before the calendar date if the release occurred outside regular trading hours.", icon="ℹ️")
+    st.caption("Explore how US-listed sectors and major ETFs behaved around verified historical macro releases.")
 
-    event_col1, event_col2 = st.columns([1.15, 1])
+    # Curated historical dates transcribed from official BLS and Federal Reserve calendars.
+    # This is a starter library, not a live calendar feed; always verify dates at the source.
+    cpi_source = "https://www.bls.gov/schedule/news_release/cpi.htm"
+    jobs_source = "https://www.bls.gov/schedule/news_release/empSit.htm"
+    fomc_source = "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+    bea_source = "https://www.bea.gov/news/schedule"
+    event_library = [
+        # CPI release dates confirmed on the BLS CPI schedule.
+        {"type": "CPI / inflation", "date": "2025-01-15", "label": "CPI · December 2024", "source": cpi_source, "source_name": "BLS CPI calendar"},
+        {"type": "CPI / inflation", "date": "2025-04-10", "label": "CPI · March 2025", "source": cpi_source, "source_name": "BLS CPI calendar"},
+        {"type": "CPI / inflation", "date": "2025-05-13", "label": "CPI · April 2025", "source": cpi_source, "source_name": "BLS CPI calendar"},
+        {"type": "CPI / inflation", "date": "2025-08-12", "label": "CPI · July 2025", "source": cpi_source, "source_name": "BLS CPI calendar"},
+        {"type": "CPI / inflation", "date": "2025-09-11", "label": "CPI · August 2025", "source": cpi_source, "source_name": "BLS CPI calendar"},
+        {"type": "CPI / inflation", "date": "2025-10-24", "label": "CPI · September 2025 (rescheduled)", "source": cpi_source, "source_name": "BLS CPI calendar"},
+        {"type": "CPI / inflation", "date": "2025-12-18", "label": "CPI · November 2025", "source": cpi_source, "source_name": "BLS CPI calendar"},
+        {"type": "CPI / inflation", "date": "2026-01-13", "label": "CPI · December 2025", "source": cpi_source, "source_name": "BLS CPI calendar"},
+        {"type": "CPI / inflation", "date": "2026-02-13", "label": "CPI · January 2026", "source": cpi_source, "source_name": "BLS CPI calendar"},
+        {"type": "CPI / inflation", "date": "2026-03-11", "label": "CPI · February 2026", "source": cpi_source, "source_name": "BLS CPI calendar"},
+        {"type": "CPI / inflation", "date": "2026-04-10", "label": "CPI · March 2026", "source": cpi_source, "source_name": "BLS CPI calendar"},
+        {"type": "CPI / inflation", "date": "2026-05-12", "label": "CPI · April 2026", "source": cpi_source, "source_name": "BLS CPI calendar"},
+        {"type": "CPI / inflation", "date": "2026-06-10", "label": "CPI · May 2026", "source": cpi_source, "source_name": "BLS CPI calendar"},
+        {"type": "CPI / inflation", "date": "2026-07-14", "label": "CPI · June 2026", "source": cpi_source, "source_name": "BLS CPI calendar"},
+        {"type": "CPI / inflation", "date": "2026-08-12", "label": "CPI · July 2026", "source": cpi_source, "source_name": "BLS CPI calendar"},
+        {"type": "CPI / inflation", "date": "2026-09-11", "label": "CPI · August 2026", "source": cpi_source, "source_name": "BLS CPI calendar"},
+        # Employment Situation dates from the BLS release calendar.
+        {"type": "Employment / payrolls", "date": "2025-01-10", "label": "Employment Situation · December 2024", "source": jobs_source, "source_name": "BLS Employment Situation calendar"},
+        {"type": "Employment / payrolls", "date": "2025-04-04", "label": "Employment Situation · March 2025", "source": jobs_source, "source_name": "BLS Employment Situation calendar"},
+        {"type": "Employment / payrolls", "date": "2025-05-02", "label": "Employment Situation · April 2025", "source": jobs_source, "source_name": "BLS Employment Situation calendar"},
+        {"type": "Employment / payrolls", "date": "2025-08-01", "label": "Employment Situation · July 2025", "source": jobs_source, "source_name": "BLS Employment Situation calendar"},
+        {"type": "Employment / payrolls", "date": "2025-09-05", "label": "Employment Situation · August 2025", "source": jobs_source, "source_name": "BLS Employment Situation calendar"},
+        {"type": "Employment / payrolls", "date": "2025-11-20", "label": "Employment Situation · September 2025 (rescheduled)", "source": jobs_source, "source_name": "BLS Employment Situation calendar"},
+        {"type": "Employment / payrolls", "date": "2026-07-02", "label": "Employment Situation · June 2026", "source": jobs_source, "source_name": "BLS Employment Situation calendar"},
+        {"type": "Employment / payrolls", "date": "2026-09-04", "label": "Employment Situation · August 2026", "source": jobs_source, "source_name": "BLS Employment Situation calendar"},
+        {"type": "Employment / payrolls", "date": "2026-10-02", "label": "Employment Situation · September 2026", "source": jobs_source, "source_name": "BLS Employment Situation calendar"},
+        # FOMC decision dates are the second day of each scheduled two-day meeting.
+        {"type": "FOMC / interest rates", "date": "2025-01-29", "label": "FOMC decision · January 2025", "source": fomc_source, "source_name": "Federal Reserve FOMC calendar"},
+        {"type": "FOMC / interest rates", "date": "2025-03-19", "label": "FOMC decision · March 2025", "source": fomc_source, "source_name": "Federal Reserve FOMC calendar"},
+        {"type": "FOMC / interest rates", "date": "2025-05-07", "label": "FOMC decision · May 2025", "source": fomc_source, "source_name": "Federal Reserve FOMC calendar"},
+        {"type": "FOMC / interest rates", "date": "2025-06-18", "label": "FOMC decision · June 2025", "source": fomc_source, "source_name": "Federal Reserve FOMC calendar"},
+        {"type": "FOMC / interest rates", "date": "2025-07-30", "label": "FOMC decision · July 2025", "source": fomc_source, "source_name": "Federal Reserve FOMC calendar"},
+        {"type": "FOMC / interest rates", "date": "2025-09-17", "label": "FOMC decision · September 2025", "source": fomc_source, "source_name": "Federal Reserve FOMC calendar"},
+        {"type": "FOMC / interest rates", "date": "2025-10-29", "label": "FOMC decision · October 2025", "source": fomc_source, "source_name": "Federal Reserve FOMC calendar"},
+        {"type": "FOMC / interest rates", "date": "2025-12-10", "label": "FOMC decision · December 2025", "source": fomc_source, "source_name": "Federal Reserve FOMC calendar"},
+        {"type": "FOMC / interest rates", "date": "2026-01-28", "label": "FOMC decision · January 2026", "source": fomc_source, "source_name": "Federal Reserve FOMC calendar"},
+        {"type": "FOMC / interest rates", "date": "2026-03-18", "label": "FOMC decision · March 2026", "source": fomc_source, "source_name": "Federal Reserve FOMC calendar"},
+        {"type": "FOMC / interest rates", "date": "2026-04-29", "label": "FOMC decision · April 2026", "source": fomc_source, "source_name": "Federal Reserve FOMC calendar"},
+        {"type": "FOMC / interest rates", "date": "2026-06-17", "label": "FOMC decision · June 2026", "source": fomc_source, "source_name": "Federal Reserve FOMC calendar"},
+        {"type": "FOMC / interest rates", "date": "2026-07-29", "label": "FOMC decision · July 2026", "source": fomc_source, "source_name": "Federal Reserve FOMC calendar"},
+        {"type": "FOMC / interest rates", "date": "2026-09-16", "label": "FOMC decision · September 2026", "source": fomc_source, "source_name": "Federal Reserve FOMC calendar"},
+    ]
+
+    st.markdown("##### Choose an event")
+    event_mode = st.radio(
+        "Event source",
+        ["Historical event library", "Enter date manually"],
+        horizontal=True,
+        key="macro_event_source_mode",
+        label_visibility="collapsed",
+    )
+    event_col1, event_col2 = st.columns([1, 1.15])
     with event_col1:
         event_type = st.selectbox(
             "Event type",
             ["CPI / inflation", "FOMC / interest rates", "Employment / payrolls", "GDP / growth", "Other / custom"],
             key="macro_event_type",
         )
-    with event_col2:
-        default_event_date = dt.date.today() - dt.timedelta(days=30)
-        event_date = st.date_input(
-            "Release date",
-            value=default_event_date,
-            min_value=dt.date.today() - dt.timedelta(days=720),
-            max_value=dt.date.today(),
-            help="Choose the actual publication date from a trusted calendar. If the date is not a trading day, the study maps to the next available trading session.",
-            key="macro_event_date",
-        )
-    if event_date.weekday() >= 5:
-        st.warning("The selected date falls on a weekend. Confirm the actual release date; the study may map it to the next available trading session.")
+    source_by_type = {
+        "CPI / inflation": (cpi_source, "BLS CPI calendar"),
+        "Employment / payrolls": (jobs_source, "BLS Employment Situation calendar"),
+        "FOMC / interest rates": (fomc_source, "Federal Reserve FOMC calendar"),
+        "GDP / growth": (bea_source, "BEA release schedule"),
+        "Other / custom": (bea_source, "Official release calendar"),
+    }
+    event_date = None
+    selected_event = None
+    if event_mode == "Historical event library":
+        matching_events = [e for e in event_library if e["type"] == event_type and dt.date.fromisoformat(e["date"]) <= dt.date.today()]
+        matching_events = sorted(matching_events, key=lambda e: e["date"], reverse=True)
+        if matching_events:
+            event_labels = [f"{e['label']} · {dt.date.fromisoformat(e['date']):%d %b %Y}" for e in matching_events]
+            with event_col2:
+                selected_label = st.selectbox("Historical release", event_labels, key="macro_historical_event")
+            selected_event = matching_events[event_labels.index(selected_label)]
+            event_date = dt.date.fromisoformat(selected_event["date"])
+            st.markdown(
+                f"<div style='background:#111C30;border:1px solid #263650;border-radius:10px;padding:12px 14px;color:#E2E8F0;'>Selected release: <strong>{selected_event['label']}</strong> · {event_date:%d %B %Y}<br>Source: <a style='color:#93C5FD' href='{selected_event['source']}' target='_blank'>{selected_event['source_name']}</a></div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.info("There are no curated dates for this category in the starter library yet. Switch to ‘Enter date manually’ and verify the date with the official calendar.")
+            with event_col2:
+                event_date = st.date_input(
+                    "Release date (manual fallback)", value=dt.date.today() - dt.timedelta(days=30),
+                    min_value=dt.date.today() - dt.timedelta(days=720), max_value=dt.date.today(), key="macro_event_date_fallback",
+                )
+            source_url, source_name = source_by_type[event_type]
+            st.markdown(f"Source to verify: [{source_name}]({source_url})")
     else:
-        st.caption(f"Selected date: {event_date:%A, %d %B %Y}. This is a user-entered date and is not independently verified by the app.")
+        with event_col2:
+            event_date = st.date_input(
+                "Release date", value=dt.date.today() - dt.timedelta(days=30),
+                min_value=dt.date.today() - dt.timedelta(days=720), max_value=dt.date.today(),
+                help="Choose the actual publication date from the official calendar. Non-trading dates map to the next available trading session.",
+                key="macro_event_date_manual",
+            )
+        source_url, source_name = source_by_type[event_type]
+        st.markdown(f"Verify the date with the [ {source_name} ]({source_url}). The app does not independently validate manual dates.")
+
+    if event_date is None:
+        event_date = dt.date.today() - dt.timedelta(days=30)
+    if event_mode == "Historical event library" and selected_event is not None:
+        st.caption("This release is included in the app's curated starter library. Calendar schedules can change; use the official source link above to confirm details.")
+
+    if event_date.weekday() >= 5:
+        st.warning("The selected date falls on a weekend. Confirm the release date; the study maps it to the next available trading session.")
+    elif event_mode == "Enter date manually" or selected_event is None:
+        st.caption(f"Selected date: {event_date:%A, %d %B %Y}. Manual dates are not independently verified by the app.")
+    else:
+        st.caption(f"Selected historical release: {event_date:%A, %d %B %Y}. The event library is a curated starter set, not a live calendar feed.")
 
     st.markdown("##### Event-study settings")
     left_setting, right_setting = st.columns(2)
