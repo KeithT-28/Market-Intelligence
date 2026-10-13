@@ -31,6 +31,44 @@ SECTOR_ETFS = {
     "Utilities": "XLU",
 }
 
+# Human-readable names for the curated company watchlist. Tickers remain visible
+# alongside names so users can identify the listed security unambiguously.
+COMPANY_DISPLAY_NAMES: Dict[str, str] = {
+    "META": "Meta Platforms", "GOOGL": "Alphabet (Class A)", "GOOG": "Alphabet (Class C)",
+    "NFLX": "Netflix", "TMUS": "T-Mobile US", "DIS": "Walt Disney", "CMCSA": "Comcast",
+    "VZ": "Verizon", "T": "AT&T", "EA": "Electronic Arts",
+    "AMZN": "Amazon", "TSLA": "Tesla", "HD": "Home Depot", "MCD": "McDonald's",
+    "TJX": "TJX Companies", "LOW": "Lowe's", "BKNG": "Booking Holdings", "NKE": "Nike",
+    "SBUX": "Starbucks", "ORLY": "O'Reilly Automotive",
+    "WMT": "Walmart", "COST": "Costco", "PG": "Procter & Gamble", "KO": "Coca-Cola",
+    "PEP": "PepsiCo", "PM": "Philip Morris International", "MDLZ": "Mondelez International",
+    "CL": "Colgate-Palmolive", "MO": "Altria Group", "KHC": "Kraft Heinz",
+    "XOM": "Exxon Mobil", "CVX": "Chevron", "COP": "ConocoPhillips", "SLB": "SLB",
+    "EOG": "EOG Resources", "MPC": "Marathon Petroleum", "PSX": "Phillips 66",
+    "VLO": "Valero Energy", "OXY": "Occidental Petroleum", "WMB": "Williams Companies",
+    "BRK-B": "Berkshire Hathaway (B)", "JPM": "JPMorgan Chase", "V": "Visa",
+    "MA": "Mastercard", "BAC": "Bank of America", "WFC": "Wells Fargo",
+    "GS": "Goldman Sachs", "MS": "Morgan Stanley", "C": "Citigroup", "AXP": "American Express",
+    "LLY": "Eli Lilly", "JNJ": "Johnson & Johnson", "ABBV": "AbbVie", "MRK": "Merck",
+    "UNH": "UnitedHealth Group", "ABT": "Abbott Laboratories", "ISRG": "Intuitive Surgical",
+    "TMO": "Thermo Fisher Scientific", "AMGN": "Amgen", "PFE": "Pfizer",
+    "GE": "GE Aerospace", "CAT": "Caterpillar", "RTX": "RTX", "HON": "Honeywell",
+    "UNP": "Union Pacific", "ETN": "Eaton", "BA": "Boeing", "DE": "Deere & Company",
+    "UPS": "UPS", "LMT": "Lockheed Martin",
+    "NVDA": "NVIDIA", "AAPL": "Apple", "MSFT": "Microsoft", "AVGO": "Broadcom",
+    "ORCL": "Oracle", "CRM": "Salesforce", "AMD": "Advanced Micro Devices",
+    "CSCO": "Cisco Systems", "IBM": "IBM", "QCOM": "Qualcomm",
+    "LIN": "Linde", "SHW": "Sherwin-Williams", "APD": "Air Products",
+    "ECL": "Ecolab", "NEM": "Newmont", "FCX": "Freeport-McMoRan",
+    "CTVA": "Corteva", "NUE": "Nucor", "VMC": "Vulcan Materials", "MLM": "Martin Marietta",
+    "PLD": "Prologis", "AMT": "American Tower", "EQIX": "Equinix", "WELL": "Welltower",
+    "SPG": "Simon Property Group", "PSA": "Public Storage", "O": "Realty Income",
+    "DLR": "Digital Realty", "AVB": "AvalonBay Communities", "EQR": "Equity Residential",
+    "NEE": "NextEra Energy", "SO": "Southern Company", "DUK": "Duke Energy",
+    "CEG": "Constellation Energy", "AEP": "American Electric Power", "SRE": "Sempra",
+    "VST": "Vistra", "EXC": "Exelon", "D": "Dominion Energy", "PEG": "Public Service Enterprise Group",
+}
+
 # Starter constituent universe. These are representative large-cap names, not a
 # guaranteed live market-cap ranking. A later version can add a licensed screener.
 SECTOR_COMPANIES: Dict[str, List[str]] = {
@@ -972,6 +1010,7 @@ if page == "Overview":
             hist = get_return_history(company_ticker)
             if hist.empty:
                 company_rows.append({
+                    "Company": COMPANY_DISPLAY_NAMES.get(company_ticker, company_ticker),
                     "Ticker": company_ticker, "Last": None,
                     "Daily %": None, "1W %": None, "1M %": None, "YTD %": None, "1Y %": None,
                     "As of": "Unavailable",
@@ -997,6 +1036,7 @@ if page == "Overview":
             )
             ytd_target = pd.Timestamp(year=latest_date.year, month=1, day=1) - pd.Timedelta(days=1)
             company_rows.append({
+                "Company": COMPANY_DISPLAY_NAMES.get(company_ticker, company_ticker),
                 "Ticker": company_ticker,
                 "Last": latest_close,
                 "Daily %": daily_ret,
