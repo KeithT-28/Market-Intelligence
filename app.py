@@ -164,55 +164,6 @@ def format_price(value, ticker: str) -> str:
     return f"{value:,.4f}" if "=X" in ticker or ticker.endswith("=X") else f"{value:,.2f}"
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
-@st.cache_data(ttl=3600, show_spinner=False)
-def get_market_cap(ticker: str):
-    """Best-effort market cap in USD; return None rather than inventing a value."""
-    try:
-        instrument = yf.Ticker(ticker)
-        value = None
-
-        # yfinance FastInfo is dict-like in some versions and attribute-based
-        # in others. Try both access patterns.
-        try:
-            fast = instrument.fast_info
-            try:
-                value = fast.get("market_cap")
-            except Exception:
-                value = None
-            if value is None:
-                try:
-                    value = fast["market_cap"]
-                except Exception:
-                    value = None
-            if value is None:
-                try:
-                    value = fast.market_cap
-                except Exception:
-                    value = None
-        except Exception:
-            value = None
-
-        # Fallback to Yahoo's detailed quote metadata.
-        if value is None:
-            try:
-                info = instrument.info or {}
-                value = info.get("marketCap")
-                # If marketCap is missing, estimate only when both shares
-                # outstanding and a current price are available.
-                if value is None:
-                    shares = info.get("sharesOutstanding")
-                    price = info.get("currentPrice") or info.get("regularMarketPrice")
-                    if shares is not None and price is not None:
-                        value = float(shares) * float(price)
-            except Exception:
-                value = None
-
-        return float(value) if value is not None and float(value) > 0 else None
-    except Exception:
-        return None
-
-
 def returns_table(data: pd.DataFrame) -> pd.DataFrame:
     """Returns based on latest available adjusted close and historical reference."""
     if data.empty or "Close" not in data:
@@ -280,39 +231,91 @@ def render_price_chart(data: pd.DataFrame, ticker: str, interval_label: str):
 
 def render_instrument(ticker: str, period_label: str, name: str = ""):
     period, interval = PERIOD_OPTIONS[period_label]
-    # Keep chart data separate from return-calculation data. The selected chart
-    # window may be only 1D/1M, but the return table needs at least 2 years of
-    # daily history to calculate 1D, 5D, 1M, 3M, 6M, YTD and 1Y consistently.
-    with st.spinner(f"Loading {ticker} price history…"):
-        chart_data = get_history(ticker, period, interval)
-        daily_history = get_history(ticker, "2y", "1d")
-    if chart_data.empty:
+    with st.spinner(f"Loading {ticker} history…"):
+        data = get_history(ticker, period, interval)
+    if data.empty:
         st.error(f"Unable to retrieve history for {ticker}. The data provider may not support this symbol or interval.")
         return
-    chart_data = chart_data.sort_values("Date").reset_index(drop=True)
-    latest = float(chart_data["Close"].iloc[-1])
-    prev = float(chart_data["Close"].iloc[-2]) if len(chart_data) > 1 else None
-    last_bar_change = ((latest / prev) - 1) * 100 if prev else None
+    data = data.sort_values("Date").reset_index(drop=True)
+    latest = float(data["Close"].iloc[-1])
+    prev = float(data["Close"].iloc[-2]) if len(data) > 1 else None
+    daily_change = ((latest / prev) - 1) * 100 if prev else None
     title = name or ticker
     st.subheader(title)
     m1, m2, m3 = st.columns(3)
     m1.metric("Latest available price", format_price(latest, ticker))
-    m2.metric("Last bar move", f"{last_bar_change:+.2f}%" if last_bar_change is not None else "—")
-    m3.metric("Last chart point", pd.Timestamp(chart_data["Date"].iloc[-1]).strftime("%d %b %Y %H:%M"))
-    render_price_chart(chart_data, ticker, interval)
+    m2.metric("Last bar move", f"{daily_change:+.2f}%" if daily_change is not None else "—")
+    m3.metric("Last data point", pd.Timestamp(data["Date"].iloc[-1]).strftime("%d %b %Y %H:%M"))
+    render_price_chart(data, ticker, interval)
     st.markdown("#### Historical returns")
-    if daily_history.empty:
-        st.warning("The provider returned no daily history for return calculations. Try refreshing later or verify the ticker.")
-        table = returns_table(chart_data)
-    else:
-        table = returns_table(daily_history)
+    table = returns_table(data)
     st.dataframe(
         table.style.format({"Reference close": "{:,.4f}", "Latest close": "{:,.4f}", "Return (%)": "{:+.2f}%"}, na_rep="—"),
         use_container_width=True, hide_index=True
     )
     csv = table.to_csv(index=False).encode("utf-8")
     st.download_button("Download return table (CSV)", csv, file_name=f"{ticker.replace('=', '_')}_returns.csv", mime="text/csv")
-    st.caption("The chart uses your selected period; the return table uses up to two years of daily adjusted history. Returns are based on the latest available daily close, which may differ from the latest intraday chart point. Provider coverage and delays vary.")
+    st.caption("Returns use adjusted closing prices where the provider supplies them. Intraday periods can have limited history; unavailable reference dates are shown as insufficient history.")
+
+
+def render_explorer_view(ticker: str, period_label: str, name: str = ""):
+    """Mobile-friendly Instrument Explorer layout inspired by the design mock-up."""
+    period, interval = PERIOD_OPTIONS[period_label]
+    with st.spinner(f"Loading {ticker} history…"):
+        data = get_history(ticker, period, interval)
+    if data.empty:
+        st.warning(f"No price history was returned for {ticker}. Try another period or instrument.")
+        return
+
+    data = data.sort_values("Date").reset_index(drop=True)
+    latest = float(data["Close"].iloc[-1])
+    previous = float(data["Close"].iloc[-2]) if len(data) > 1 else None
+    bar_move = ((latest / previous) - 1) * 100 if previous else None
+    display_name = name or ticker
+
+    # Compact summary row instead of the large three-metric layout used elsewhere.
+    p1, p2 = st.columns([1.3, 1])
+    with p1:
+        st.metric("Latest available price", format_price(latest, ticker))
+    with p2:
+        st.metric("Last bar move", f"{bar_move:+.2f}%" if bar_move is not None else "—")
+
+    with st.container(border=True):
+        head_left, head_right = st.columns([5, 1])
+        with head_left:
+            st.markdown(f"### {display_name}")
+            st.caption(f"{mode_label} · {period_label} view" if (mode_label := st.session_state.get("explorer_mode_label")) else f"{period_label} view")
+        with head_right:
+            st.markdown("📈")
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=data["Date"], y=data["Close"], mode="lines", name=ticker,
+            line=dict(width=2.5, color="#429E88"),
+            fill="tozeroy", fillcolor="rgba(66,158,136,0.12)",
+            hovertemplate="%{x}<br>Price: %{y:,.4f}<extra></extra>",
+        ))
+        fig.update_layout(
+            template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white",
+            height=310, margin=dict(l=8, r=8, t=8, b=8),
+            xaxis_title=None, yaxis_title=None, showlegend=False, hovermode="x unified",
+        )
+        fig.update_xaxes(showgrid=False, showline=False, ticks="")
+        fig.update_yaxes(showgrid=True, gridcolor="rgba(128,128,128,0.18)", zeroline=False)
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.caption("Illustrative layout · actual chart uses retrieved market history. Data may be delayed and is not guaranteed real-time.")
+
+    show_returns = st.checkbox("Show return calculations table", value=True, key=f"show_returns_{ticker}")
+    if show_returns:
+        st.markdown("#### Historical returns")
+        table = returns_table(data)
+        st.dataframe(
+            table[["Period", "Reference date", "Return (%)"]].style.format({"Return (%)": "{:+.2f}%"}, na_rep="—"),
+            use_container_width=True, hide_index=True
+        )
+        csv = table.to_csv(index=False).encode("utf-8")
+        st.download_button("Download return table (CSV)", csv, file_name=f"{ticker.replace('=', '_')}_returns.csv", mime="text/csv")
+    st.caption(f"Last data point returned: {pd.Timestamp(data['Date'].iloc[-1]).strftime('%d %b %Y %H:%M')} · Chart interval: {interval}.")
 
 
 # -----------------------------
@@ -344,14 +347,40 @@ if page == "Overview":
         "TLT": "TLT", "GLD": "GLD", "EURUSD=X": "EUR/USD", "JPY=X": "USD/JPY",
         "GBPUSD=X": "GBP/USD", "AUDUSD=X": "AUD/USD",
     }
-    for start in (0, 5):
-        cols = st.columns(5)
-        for col, (_, row) in zip(cols, snap.iloc[start:start+5].iterrows()):
-            with col:
-                val = row["Last"]
-                change = row["Daily %"]
-                col.metric(display_names.get(row["Ticker"], row["Ticker"]), format_price(val, row["Ticker"]) if pd.notna(val) else "—",
-                           f"{change:+.2f}%" if pd.notna(change) else "—")
+
+    # Keep the S&P 500 as the only prominent market metric; show everything else
+    # in a compact table so the Overview is easier to scan on a phone.
+    index_row = snap.loc[snap["Ticker"] == "^GSPC"]
+    if not index_row.empty:
+        row = index_row.iloc[0]
+        index_value = row["Last"]
+        index_change = row["Daily %"]
+        st.metric(
+            "S&P 500",
+            format_price(index_value, "^GSPC") if pd.notna(index_value) else "—",
+            f"{index_change:+.2f}%" if pd.notna(index_change) else "—",
+        )
+        if pd.notna(row.get("As of")):
+            st.caption(f"Latest available observation: {row['As of']} · Data may be delayed; not guaranteed real-time.")
+    else:
+        st.warning("S&P 500 data is currently unavailable.")
+
+    # Keep ETF performance separate from FX performance for easier scanning.
+    fx_tickers = ("EURUSD=X", "JPY=X", "GBPUSD=X", "AUDUSD=X")
+    etf_tickers = ("SPY", "QQQ", "IWM", "TLT", "GLD")
+
+    st.markdown("### Major ETFs")
+    etf_markets = snap.loc[snap["Ticker"].isin(etf_tickers)].copy()
+    if not etf_markets.empty:
+        etf_markets["Instrument"] = etf_markets["Ticker"].map(display_names).fillna(etf_markets["Ticker"])
+        st.dataframe(
+            etf_markets[["Instrument", "Ticker", "Last", "Daily %", "As of"]].style.format(
+                {"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}, na_rep="—"
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
     st.markdown("### Sector performance")
     sector_tickers = tuple(SECTOR_ETFS.values())
     sector_data = get_snapshot(sector_tickers)
@@ -360,6 +389,19 @@ if page == "Overview":
         sector_data["Sector"] = sector_data["Ticker"].map(name_by_ticker)
         sector_data = sector_data.sort_values("Daily %", ascending=False, na_position="last")
         st.dataframe(sector_data[["Sector", "Ticker", "Last", "Daily %", "As of"]].style.format({"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}, na_rep="—"), use_container_width=True, hide_index=True)
+
+    st.markdown("### FX performance")
+    fx_data = snap.loc[snap["Ticker"].isin(fx_tickers)].copy()
+    if not fx_data.empty:
+        fx_data["Pair"] = fx_data["Ticker"].map(display_names).fillna(fx_data["Ticker"])
+        st.dataframe(
+            fx_data[["Pair", "Ticker", "Last", "Daily %", "As of"]].style.format(
+                {"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}, na_rep="—"
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
     st.markdown("### Quick chart")
     quick = st.selectbox("Choose a market instrument", ["^GSPC", "SPY", "QQQ", "IWM", "TLT", "GLD", "EURUSD=X", "JPY=X"])
     render_instrument(quick, period_label)
@@ -380,33 +422,11 @@ elif page == "Sector Monitor":
         render_instrument(sector_etf, period_label, f"{sector} ({sector_etf})")
     with right:
         st.markdown("#### Company constituents")
-        st.caption("Companies are ranked by market capitalisation within this starter universe. This is not yet a complete scan of every S&P 500 constituent, so it may not identify the true top 10 for the entire sector. Market-cap values depend on provider coverage.")
+        st.caption("Starter list of representative large-cap constituents. This list is not guaranteed to be the current top 10 by market capitalisation; dynamic rankings require a reliable constituent/market-cap data source.")
         company_tickers = SECTOR_COMPANIES[sector]
         company_snap = get_snapshot(tuple(company_tickers))
-        with st.spinner("Loading company market capitalisations…"):
-            cap_rows = []
-            for symbol in company_tickers:
-                cap_value = get_market_cap(symbol)
-                cap_rows.append({
-                    "Ticker": symbol,
-                    "Market Cap (USD bn)": (cap_value / 1_000_000_000) if cap_value is not None else None,
-                })
-        caps = pd.DataFrame(cap_rows)
-        company_snap = company_snap.merge(caps, on="Ticker", how="left")
-        company_snap = company_snap.sort_values("Market Cap (USD bn)", ascending=False, na_position="last")
-        if company_snap["Market Cap (USD bn)"].notna().sum() == 0:
-            st.warning(
-                "Market capitalisation was unavailable for these tickers from the current data provider. "
-                "The table cannot be considered market-cap ranked until valid values are returned. "
-                "Try refreshing later; if this persists, we should connect a dedicated market-data source."
-            )
-        st.dataframe(
-            company_snap[["Ticker", "Market Cap (USD bn)", "Last", "Daily %", "As of"]].style.format(
-                {"Market Cap (USD bn)": "${:,.1f}", "Last": "{:,.2f}", "Daily %": "{:+.2f}%"},
-                na_rep="—"
-            ),
-            use_container_width=True, hide_index=True
-        )
+        company_snap = company_snap.sort_values("Daily %", ascending=False, na_position="last")
+        st.dataframe(company_snap.style.format({"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}, na_rep="—"), use_container_width=True, hide_index=True)
         selected_company = st.selectbox("Open company chart", company_tickers)
         render_instrument(selected_company, period_label)
 
@@ -424,18 +444,24 @@ elif page == "G10 FX":
 
 else:
     st.markdown("### Instrument Explorer")
-    mode = st.radio("Asset type", ["ETF", "Stock", "FX", "Index"], horizontal=True)
+    st.caption("Explore one instrument at a time using a consistent layout for ETFs, stocks, currencies and indices.")
+    mode = st.radio("Asset class", ["ETF", "Stock", "G10 FX", "Index"], horizontal=True, key="explorer_asset_class")
     if mode == "ETF":
         options = ETF_UNIVERSE
     elif mode == "Stock":
         all_companies = sorted({x for names in SECTOR_COMPANIES.values() for x in names})
         options = {x: x for x in all_companies}
-    elif mode == "FX":
+    elif mode == "G10 FX":
         options = FX_UNIVERSE
     else:
         options = {"S&P 500": "^GSPC", "Dow Jones Industrial Average": "^DJI", "Nasdaq Composite": "^IXIC", "Russell 2000": "^RUT"}
-    label = st.selectbox("Instrument", list(options.keys()))
-    render_instrument(options[label], period_label, label)
+
+    label = st.selectbox("Instrument", list(options.keys()), key="explorer_instrument")
+    period_choices = ["1D", "5D", "1M", "3M", "YTD", "1Y"]
+    default_period = period_label if period_label in period_choices else "1Y"
+    explorer_period = st.radio("Historical period", period_choices, index=period_choices.index(default_period), horizontal=True, key="explorer_period")
+    st.session_state["explorer_mode_label"] = "FX" if mode == "G10 FX" else mode
+    render_explorer_view(options[label], explorer_period, label)
 
 st.divider()
 st.caption("Built with Streamlit, Plotly, pandas and yfinance. This is a personal research dashboard, not investment advice. Verify market data with your broker or licensed data provider before making decisions.")
