@@ -82,25 +82,32 @@ FX_UNIVERSE = {
 # This is a practical watchlist of liquid global contracts, not a live ranking
 # by current exchange trading volume. Futures prices may be delayed.
 COMMODITY_UNIVERSE = {
+    # Precious metals are grouped separately from the broader commodity complex.
     "Gold": "GC=F",
     "Silver": "SI=F",
+    "Platinum": "PL=F",
+    # Energy
     "WTI Crude Oil": "CL=F",
     "Brent Crude Oil": "BZ=F",
     "Natural Gas": "NG=F",
+    # Industrial metals
     "Copper": "HG=F",
+    # Agriculture
     "Corn": "ZC=F",
     "Soybeans": "ZS=F",
     "Wheat": "ZW=F",
     "Coffee": "KC=F",
     "Sugar": "SB=F",
-    "Platinum": "PL=F",
+    "Cotton": "CT=F",
 }
 
+PRECIOUS_METALS = ["Gold", "Silver", "Platinum"]
+OTHER_COMMODITIES = [name for name in COMMODITY_UNIVERSE if name not in PRECIOUS_METALS]
 COMMODITY_CATEGORIES = {
-    "Precious Metals": ["Gold", "Silver", "Platinum"],
+    "Precious Metals": PRECIOUS_METALS,
     "Energy": ["WTI Crude Oil", "Brent Crude Oil", "Natural Gas"],
     "Industrial Metals": ["Copper"],
-    "Agriculture": ["Corn", "Soybeans", "Wheat", "Coffee", "Sugar"],
+    "Agriculture": ["Corn", "Soybeans", "Wheat", "Coffee", "Sugar", "Cotton"],
 }
 
 PERIOD_OPTIONS = {
@@ -168,6 +175,13 @@ st.markdown(
     .mi-eyebrow { color:#7dd3fc; font-size:.72rem; font-weight:750; letter-spacing:.13em; text-transform:uppercase; }
     .mi-section-note { color:var(--mi-muted); font-size:.82rem; margin-top:-.4rem; margin-bottom:.65rem; }
     .mi-chip { display:inline-block; padding:.2rem .5rem; border-radius:6px; background:#172944; border:1px solid #294568; color:#93c5fd; font-size:.73rem; }
+    .mi-jump-nav { position:sticky; top:.25rem; z-index:50; display:flex; gap:.45rem; overflow-x:auto; white-space:nowrap; padding:.55rem; margin:.6rem 0 1rem; border:1px solid #26364f; border-radius:12px; background:rgba(17,27,46,.96); backdrop-filter:blur(10px); }
+    .mi-jump-nav a { display:inline-block; text-decoration:none !important; color:#dbeafe !important; background:#172944; border:1px solid #294568; border-radius:8px; padding:.42rem .7rem; font-size:.82rem; font-weight:650; }
+    .mi-jump-nav a:active, .mi-jump-nav a:hover { background:#24456d; }
+    .mi-section-band { --section-accent:#60a5fa; display:flex; align-items:center; gap:.75rem; padding:.8rem .85rem; margin:1.35rem 0 .7rem; border:1px solid var(--mi-border); border-left:4px solid var(--section-accent); border-radius:11px; background:linear-gradient(100deg, color-mix(in srgb, var(--section-accent) 10%, #111b2e), #111b2e 70%); scroll-margin-top:5rem; }
+    .mi-section-icon { display:flex; align-items:center; justify-content:center; width:2.4rem; height:2.4rem; flex:0 0 2.4rem; border-radius:9px; background:color-mix(in srgb, var(--section-accent) 18%, #111b2e); color:var(--section-accent); font-size:1.25rem; }
+    .mi-section-kicker { color:var(--section-accent); font-size:.68rem; font-weight:800; letter-spacing:.13em; text-transform:uppercase; }
+    .mi-section-band h2 { margin:.08rem 0 0 !important; font-size:1.18rem !important; }
     @media (max-width: 768px) {
       .block-container { padding: .7rem .7rem 1.5rem .7rem; }
       [data-testid="stMetric"] { padding: 10px 11px; }
@@ -500,7 +514,7 @@ if st.sidebar.button("↻ Refresh data", use_container_width=True):
     st.rerun()
 
 st.markdown(
-    "<div class='mi-brand'><span class='mi-mark'>↗</span><div><div class='mi-eyebrow'>MARKET INTELLIGENCE / GLOBAL MARKETS</div><div class='mi-title'>Market Intelligence</div><div class='mi-subtitle'>US equities · ETFs · GICS sectors · G10 FX · Commodities · Commodities</div></div></div>",
+    "<div class='mi-brand'><span class='mi-mark'>↗</span><div><div class='mi-eyebrow'>MARKET INTELLIGENCE / GLOBAL MARKETS</div><div class='mi-title'>Market Intelligence</div><div class='mi-subtitle'>US equities · ETFs · GICS sectors · G10 FX · Precious metals · Commodities</div></div></div>",
     unsafe_allow_html=True,
 )
 refresh_col, refresh_note_col = st.columns([1, 2])
@@ -576,11 +590,23 @@ if page == "Overview":
             st.metric("US Dollar Index", "—", "Unavailable")
     st.caption("Table dates show the latest available trading session, not the page refresh time. Daily bars commonly carry a 00:00 date label; that is the session date, not the actual market-close time. Use Refresh market data to request a fresh provider response.")
 
-    # Keep ETF performance separate from FX performance for easier scanning.
+    # Compact jump navigation makes the long Overview easier to scan on mobile.
+    st.markdown(
+        "<nav class='mi-jump-nav' aria-label='Market sections'>"
+        "<a href='#overview-etfs'>▦ ETFs</a>"
+        "<a href='#overview-sectors'>▥ Sectors</a>"
+        "<a href='#overview-fx'>⇄ FX</a>"
+        "<a href='#overview-metals'>◆ Precious metals</a>"
+        "<a href='#overview-commodities'>◈ Commodities</a>"
+        "</nav>",
+        unsafe_allow_html=True,
+    )
+
+    # Each asset class has its own visual section, accent colour and anchor.
     fx_tickers = tuple(dict.fromkeys(FX_UNIVERSE.values()))
     etf_tickers = ("SPY", "QQQ", "IWM", "TLT", "GLD")
 
-    st.markdown("<div class='mi-eyebrow'>CROSS-ASSET</div><h2>Major ETFs</h2>", unsafe_allow_html=True)
+    st.markdown("<div id='overview-etfs' class='mi-section-band' style='--section-accent:#93c5fd'><span class='mi-section-icon'>▦</span><div><div class='mi-section-kicker'>Cross-asset benchmarks</div><h2>Major ETFs</h2></div></div>", unsafe_allow_html=True)
     etf_markets = snap.loc[snap["Ticker"].isin(etf_tickers)].copy()
     if not etf_markets.empty:
         etf_markets["Instrument"] = etf_markets["Ticker"].map(display_names).fillna(etf_markets["Ticker"])
@@ -594,7 +620,7 @@ if page == "Overview":
             hide_index=True,
         )
 
-    st.markdown("<div class='mi-eyebrow'>EQUITY BREADTH</div><h2>Sector performance</h2>", unsafe_allow_html=True)
+    st.markdown("<div id='overview-sectors' class='mi-section-band' style='--section-accent:#6ee7b7'><span class='mi-section-icon'>▥</span><div><div class='mi-section-kicker'>Equity breadth</div><h2>Sector performance</h2></div></div>", unsafe_allow_html=True)
     sector_tickers = tuple(SECTOR_ETFS.values())
     sector_data = get_snapshot(sector_tickers)
     name_by_ticker = {v: k for k, v in SECTOR_ETFS.items()}
@@ -639,7 +665,7 @@ if page == "Overview":
         sector_table = compact_observation_times(sector_data[["Sector", "Ticker", "Last", "Daily %", "As of"]])
         st.dataframe(style_market_table(sector_table, {"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}), width="stretch", hide_index=True)
 
-    st.markdown("<div class='mi-eyebrow'>CURRENCY MARKETS</div><h2>FX performance</h2>", unsafe_allow_html=True)
+    st.markdown("<div id='overview-fx' class='mi-section-band' style='--section-accent:#fdba74'><span class='mi-section-icon'>⇄</span><div><div class='mi-section-kicker'>Currency markets</div><h2>FX performance</h2></div></div>", unsafe_allow_html=True)
     fx_data = snap.loc[snap["Ticker"].isin(fx_tickers)].copy()
     if not fx_data.empty:
         fx_data["Pair"] = fx_data["Ticker"].map(display_names).fillna(fx_data["Ticker"])
@@ -668,11 +694,24 @@ if page == "Overview":
             width="stretch", hide_index=True,
         )
 
-    st.markdown("<div class='mi-eyebrow'>COMMODITIES</div><h2>Commodity performance</h2>", unsafe_allow_html=True)
-    commodity_tickers = tuple(COMMODITY_UNIVERSE.values())
+    # Keep precious metals distinct from the broader commodity complex.
+    precious_tickers = tuple(COMMODITY_UNIVERSE[name] for name in PRECIOUS_METALS)
+    st.markdown("<div id='overview-metals' class='mi-section-band' style='--section-accent:#fcd34d'><span class='mi-section-icon'>◆</span><div><div class='mi-section-kicker'>Precious metals</div><h2>Gold, silver & platinum</h2></div></div>", unsafe_allow_html=True)
+    metals_data = snap.loc[snap["Ticker"].isin(precious_tickers)].copy()
+    if not metals_data.empty:
+        metals_names = {ticker: name for name, ticker in COMMODITY_UNIVERSE.items() if name in PRECIOUS_METALS}
+        metals_data["Instrument"] = metals_data["Ticker"].map(metals_names)
+        metals_data["Instrument"] = pd.Categorical(metals_data["Instrument"], categories=PRECIOUS_METALS, ordered=True)
+        metals_data = metals_data.sort_values("Instrument")
+        metals_table = compact_observation_times(metals_data[["Instrument", "Ticker", "Last", "Daily %", "As of"]])
+        st.dataframe(style_market_table(metals_table, {"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}), width="stretch", hide_index=True)
+    st.caption("Precious metals are grouped separately because gold and silver often respond to real yields, the US dollar and safe-haven demand. Platinum is included in the same metals group.")
+
+    st.markdown("<div id='overview-commodities' class='mi-section-band' style='--section-accent:#c4b5fd'><span class='mi-section-icon'>◈</span><div><div class='mi-section-kicker'>Real assets</div><h2>Commodity futures</h2></div></div>", unsafe_allow_html=True)
+    commodity_tickers = tuple(COMMODITY_UNIVERSE[name] for name in OTHER_COMMODITIES)
     commodity_data = snap.loc[snap["Ticker"].isin(commodity_tickers)].copy()
     if not commodity_data.empty:
-        commodity_names = {ticker: name for name, ticker in COMMODITY_UNIVERSE.items()}
+        commodity_names = {ticker: name for name, ticker in COMMODITY_UNIVERSE.items() if name in OTHER_COMMODITIES}
         commodity_data["Commodity"] = commodity_data["Ticker"].map(commodity_names)
         commodity_data = commodity_data.sort_values("Daily %", ascending=False, na_position="last")
         commodity_table = compact_observation_times(commodity_data[["Commodity", "Ticker", "Last", "Daily %", "As of"]])
@@ -680,13 +719,13 @@ if page == "Overview":
             style_market_table(commodity_table, {"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}),
             width="stretch", hide_index=True,
         )
-    st.caption("Commodity watchlist uses major futures benchmarks. The selection is not a real-time ranking of the ten most-traded contracts; contract liquidity varies by exchange and date.")
+    st.caption("Commodity futures are grouped into energy, industrial metals and agriculture. This is a practical watchlist, not a verified live ranking by trading volume. Quotes may be delayed; futures contracts differ in units and expiry.")
 
-    st.markdown("<div class='mi-eyebrow'>CHARTING</div><h2>Quick chart</h2>", unsafe_allow_html=True)
+    st.markdown("<div class='mi-section-band' style='--section-accent:#60a5fa'><span class='mi-section-icon'>⌁</span><div><div class='mi-section-kicker'>Charting</div><h2>Quick chart</h2></div></div>", unsafe_allow_html=True)
     st.caption("Choose an asset group first, then select the instrument you want to inspect.")
     quick_group = st.selectbox(
         "Asset group",
-        ["Major ETFs", "FX", "Sectors", "Commodities"],
+        ["Major ETFs", "Sectors", "FX", "Precious Metals", "Commodities"],
         key="overview_quick_chart_group",
     )
     if quick_group == "Major ETFs":
@@ -699,8 +738,10 @@ if page == "Overview":
         }
     elif quick_group == "FX":
         quick_options = FX_UNIVERSE
+    elif quick_group == "Precious Metals":
+        quick_options = {name: COMMODITY_UNIVERSE[name] for name in PRECIOUS_METALS}
     elif quick_group == "Commodities":
-        quick_options = COMMODITY_UNIVERSE
+        quick_options = {name: COMMODITY_UNIVERSE[name] for name in OTHER_COMMODITIES}
     else:
         quick_options = {f"{sector} ({ticker})": ticker for sector, ticker in SECTOR_ETFS.items()}
     quick_label = st.selectbox(
@@ -746,16 +787,16 @@ elif page == "G10 FX":
     st.dataframe(style_market_table(fx_table, {"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}), width="stretch", hide_index=True)
 
 elif page == "Commodities":
-    st.markdown("<div class='mi-eyebrow'>REAL ASSETS</div><h2>Commodity Monitor</h2>", unsafe_allow_html=True)
-    st.caption("Gold and silver plus ten additional major commodity futures benchmarks across energy, metals and agriculture. This is a practical watchlist, not a definitive live ranking by trading volume.")
-    commodity_category = st.selectbox("Commodity group", ["All commodities", *COMMODITY_CATEGORIES.keys()], key="commodity_group")
-    if commodity_category == "All commodities":
+    st.markdown("<div class='mi-section-band' style='--section-accent:#c4b5fd'><span class='mi-section-icon'>◈</span><div><div class='mi-section-kicker'>Real assets</div><h2>Commodity & metals monitor</h2></div></div>", unsafe_allow_html=True)
+    st.caption("Precious metals are grouped separately from energy, industrial metals and agricultural futures. This is a practical market watchlist, not a verified live ranking by trading volume.")
+    commodity_category = st.selectbox("Market group", ["All markets", *COMMODITY_CATEGORIES.keys()], key="commodity_group")
+    if commodity_category == "All markets":
         commodity_options = COMMODITY_UNIVERSE
     else:
         commodity_options = {name: COMMODITY_UNIVERSE[name] for name in COMMODITY_CATEGORIES[commodity_category]}
     commodity_label = st.selectbox("Commodity", list(commodity_options.keys()), key="commodity_instrument")
     render_instrument(commodity_options[commodity_label], period_label, commodity_label)
-    st.markdown("#### Commodity watchlist")
+    st.markdown("#### Market watchlist")
     commodity_snap = get_snapshot(tuple(COMMODITY_UNIVERSE.values()))
     commodity_names = {ticker: name for name, ticker in COMMODITY_UNIVERSE.items()}
     commodity_snap["Commodity"] = commodity_snap["Ticker"].map(commodity_names)
@@ -767,7 +808,7 @@ elif page == "Commodities":
 else:
     st.markdown("<div class='mi-eyebrow'>CHARTING & RETURNS</div><h2>Instrument Explorer</h2>", unsafe_allow_html=True)
     st.caption("Explore one instrument at a time using a consistent layout for ETFs, stocks, currencies and indices.")
-    mode = st.radio("Asset class", ["ETF", "Stock", "G10 FX", "Commodities", "Index"], horizontal=True, key="explorer_asset_class")
+    mode = st.radio("Asset class", ["ETF", "Stock", "G10 FX", "Precious Metals", "Commodities", "Index"], horizontal=True, key="explorer_asset_class")
     if mode == "ETF":
         options = ETF_UNIVERSE
     elif mode == "Stock":
@@ -775,8 +816,10 @@ else:
         options = {x: x for x in all_companies}
     elif mode == "G10 FX":
         options = FX_UNIVERSE
+    elif mode == "Precious Metals":
+        options = {name: COMMODITY_UNIVERSE[name] for name in PRECIOUS_METALS}
     elif mode == "Commodities":
-        options = COMMODITY_UNIVERSE
+        options = {name: COMMODITY_UNIVERSE[name] for name in OTHER_COMMODITIES}
     else:
         options = {"S&P 500": "^GSPC", "Dow Jones Industrial Average": "^DJI", "Nasdaq Composite": "^IXIC", "Russell 2000": "^RUT"}
 
