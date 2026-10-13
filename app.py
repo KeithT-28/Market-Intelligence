@@ -215,6 +215,12 @@ st.markdown(
       background: var(--mi-panel) !important; border-color: var(--mi-border) !important;
     }
     button[kind="secondary"], button[kind="primary"] { border-radius: 9px !important; }
+    div[data-testid="stDownloadButton"] button {
+      background: #17345a !important; color: #f8fafc !important;
+      border: 1px solid #3b82f6 !important; font-weight: 650 !important;
+    }
+    div[data-testid="stDownloadButton"] button * { color: #f8fafc !important; }
+    div[data-testid="stDownloadButton"] button:hover { background: #214775 !important; border-color: #60a5fa !important; }
     .mi-brand { display:flex; align-items:center; gap:.7rem; margin:.15rem 0 .35rem; }
     .mi-mark { display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius:11px; background:#17345a; color:#93c5fd; font-size:1.25rem; border:1px solid #2a4c78; }
     .mi-title { font-size:1.35rem; font-weight:750; letter-spacing:.045em; color:#f8fafc; }
@@ -939,13 +945,18 @@ if page == "Overview":
             with filter_cols[0]:
                 trend_asset_filter = st.selectbox(
                     "Asset class",
-                    ["All asset classes", "Stocks", "ETFs", "Sectors", "FX", "Precious Metals", "Commodities"],
-                    key="trend_asset_class_filter",
+                    ["Stocks", "All asset classes", "ETFs", "Sectors", "FX", "Precious Metals", "Commodities"],
+                    index=0, key="trend_asset_class_filter_v21",
+                    help="Stocks is the default. Choose All asset classes for a cross-market scan.",
                 )
+            industry_options = ["All industries"]
+            if trend_asset_filter == "Stocks":
+                industry_options += list(SECTOR_ETFS.keys())
+            elif trend_asset_filter == "Sectors":
+                industry_options += list(SECTOR_ETFS.keys())
             with filter_cols[1]:
                 trend_industry_filter = st.selectbox(
-                    "Industry / sector",
-                    ["All industries"] + list(SECTOR_ETFS.keys()),
+                    "Industry / sector", industry_options,
                     key="trend_industry_filter",
                 )
             with filter_cols[0]:
@@ -983,6 +994,11 @@ if page == "Overview":
             filtered_trends = filtered_trends.loc[filtered_trends["Sector"] == trend_industry_filter]
         if trend_signal_filter != "All signals":
             filtered_trends = filtered_trends.loc[filtered_trends["Signal"] == trend_signal_filter]
+        active_asset_label = trend_asset_filter
+        active_industry_label = trend_industry_filter if trend_industry_filter != "All industries" else "All industries"
+        active_signal_label = trend_signal_filter if trend_signal_filter != "All signals" else "All signals"
+        active_direction_label = trend_direction
+        st.caption(f"View: {active_asset_label} · {active_industry_label} · {active_signal_label} · {trend_sort} · {active_direction_label}")
         ascending = trend_direction == "Top losers"
         filtered_trends = filtered_trends.sort_values(trend_sort, ascending=ascending, na_position="last")
         if trend_direction != "All":
@@ -1015,6 +1031,7 @@ if page == "Overview":
             colors = ["#34d399" if value >= 0 else "#fb7185" for value in metric_values]
             chart = go.Figure(go.Bar(
                 x=metric_values, y=chart_labels, orientation="h", marker_color=colors,
+                customdata=chart_rows["Ticker"].astype(str).tolist(),
                 text=value_labels, textposition="inside", insidetextanchor="end", cliponaxis=True,
                 textfont=dict(color="#0b1120", size=10),
                 hovertemplate=f"%{{y}}<br>{hover_label}: %{{x:.2f}}<extra></extra>",
@@ -1032,7 +1049,26 @@ if page == "Overview":
                 tickfont=dict(color="#F8FAFC", size=10),
             )
             chart.update_yaxes(showgrid=False, automargin=True, tickfont=dict(color="#F8FAFC", size=10))
-            st.plotly_chart(chart, width="stretch", theme=None, config={"displayModeBar": False, "responsive": True})
+            chart_event = st.plotly_chart(
+                chart, width="stretch", theme=None,
+                config={"displayModeBar": False, "responsive": True},
+                on_select="rerun", selection_mode="points", key="trend_ranking_chart",
+            )
+            try:
+                selected_points = chart_event.selection.points
+                if selected_points:
+                    selected_point = selected_points[0]
+                    clicked_ticker = selected_point.get("customdata")
+                    if isinstance(clicked_ticker, (list, tuple)):
+                        clicked_ticker = clicked_ticker[0] if clicked_ticker else None
+                    if not clicked_ticker and selected_point.get("point_index") is not None:
+                        point_index = int(selected_point["point_index"])
+                        if 0 <= point_index < len(chart_rows):
+                            clicked_ticker = str(chart_rows.iloc[point_index]["Ticker"])
+                    if clicked_ticker:
+                        st.session_state["trend_inspect_ticker"] = str(clicked_ticker)
+            except (AttributeError, KeyError, TypeError, ValueError):
+                pass
         else:
             st.info("No instruments match these filters. Try a broader industry, asset class or search term.")
 
@@ -1043,6 +1079,14 @@ if page == "Overview":
                 label = f"{row['Company']} ({row['Ticker']}) · {row['Sector']}"
                 inspect_options[label] = str(row["Ticker"])
             inspect_labels = list(inspect_options.keys())
+            requested_ticker = st.session_state.get("trend_inspect_ticker")
+            if requested_ticker:
+                matching_label = next(
+                    (label for label, ticker in inspect_options.items() if ticker == str(requested_ticker)),
+                    None,
+                )
+                if matching_label is not None:
+                    st.session_state["trend_inspect_selection"] = matching_label
             selected_inspect_label = st.selectbox(
                 "Inspect instrument", inspect_labels, key="trend_inspect_selection",
                 help="Choose an instrument to open its price chart and news context below.",
