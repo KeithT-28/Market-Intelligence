@@ -900,77 +900,80 @@ if page == "Overview":
         **{ticker: name for name, ticker in COMMODITY_UNIVERSE.items()},
     }
 
-    # Keep the S&P 500 as the only prominent market metric; show everything else
-    # in a compact table so the Overview is easier to scan on a phone.
-    index_row = snap.loc[snap["Ticker"] == "^GSPC"]
-    if not index_row.empty:
-        row = index_row.iloc[0]
-        index_value = row["Last"]
-        index_change = row["Daily %"]
-        st.metric(
-            "S&P 500",
-            format_price(index_value, "^GSPC") if pd.notna(index_value) else "—",
-            f"{index_change:+.2f}%" if pd.notna(index_change) else "—",
-        )
-        if pd.notna(row.get("As of")):
-            observation_time = compact_observation_times(index_row)["As of"].iloc[0]
-            st.caption(f"S&P 500 observation: {observation_time} · Data may be delayed; not guaranteed real-time.")
+    # Compact market snapshot tables avoid four full-height metric cards on mobile.
+    snapshot_rows = []
+    for ticker, label in [("^GSPC", "S&P 500"), ("^NDX", "Nasdaq 100"), ("DX-Y.NYB", "US Dollar Index")]:
+        row_data = snap.loc[snap["Ticker"] == ticker]
+        if not row_data.empty:
+            item = row_data.iloc[0]
+            last_value = item.get("Last")
+            daily_pct = item.get("Daily %")
+            snapshot_rows.append({
+                "Market": label,
+                "Latest": format_price(last_value, ticker) if pd.notna(last_value) else "—",
+                "Daily move": f"{daily_pct:+.2f}%" if pd.notna(daily_pct) else "—",
+            })
+        else:
+            snapshot_rows.append({"Market": label, "Latest": "—", "Daily move": "Unavailable"})
+
+    # Yahoo's ^TNX is quoted as yield multiplied by ten (e.g. 42.0 = 4.20%).
+    tnx_hist = get_history("^TNX", "5d", "1d")
+    if not tnx_hist.empty:
+        tnx_hist = tnx_hist.sort_values("Date")
+        yield_pct = float(tnx_hist["Close"].iloc[-1]) / 10.0
+        if len(tnx_hist) > 1:
+            yield_change_bps = (float(tnx_hist["Close"].iloc[-1]) - float(tnx_hist["Close"].iloc[-2])) * 10.0
+            yield_delta = f"{yield_change_bps:+.1f} bps"
+        else:
+            yield_delta = "—"
+        yield_value = f"{yield_pct:.2f}%"
     else:
-        st.warning("S&P 500 data is currently unavailable.")
+        yield_value, yield_delta = "—", "Unavailable"
+    snapshot_rows.insert(2, {"Market": "US 10Y Yield", "Latest": yield_value, "Daily move": yield_delta})
+    snapshot_df = pd.DataFrame(snapshot_rows)
+    st.dataframe(
+        snapshot_df,
+        hide_index=True,
+        use_container_width=True,
+        height=190,
+        column_config={
+            "Market": st.column_config.TextColumn("Market", width="medium"),
+            "Latest": st.column_config.TextColumn("Latest", width="small"),
+            "Daily move": st.column_config.TextColumn("Daily move", width="small"),
+        },
+    )
+    st.caption("Daily moves compare the latest available trading session with the previous session. Data may be delayed; refresh to request a new provider response.")
 
-    # Compact cross-asset indicators add context without crowding the mobile view.
-    metric_cols = st.columns(3)
-    with metric_cols[0]:
-        row = snap.loc[snap["Ticker"] == "^NDX"]
-        if not row.empty and pd.notna(row.iloc[0]["Last"]):
-            item = row.iloc[0]
-            st.metric("Nasdaq 100", f"{item['Last']:,.2f}", f"{item['Daily %']:+.2f}%" if pd.notna(item["Daily %"]) else "—")
-        else:
-            st.metric("Nasdaq 100", "—", "Unavailable")
-    with metric_cols[1]:
-        # Yahoo's ^TNX is quoted as yield multiplied by ten (e.g. 42.0 = 4.20%).
-        # Convert the latest and previous observations to a yield and basis-point move.
-        tnx_hist = get_history("^TNX", "5d", "1d")
-        if not tnx_hist.empty:
-            tnx_hist = tnx_hist.sort_values("Date")
-            yield_pct = float(tnx_hist["Close"].iloc[-1]) / 10.0
-            if len(tnx_hist) > 1:
-                yield_change_bps = (float(tnx_hist["Close"].iloc[-1]) - float(tnx_hist["Close"].iloc[-2])) * 10.0
-                delta_text = f"{yield_change_bps:+.1f} bps"
-            else:
-                delta_text = "—"
-            st.metric("US 10Y Yield", f"{yield_pct:.2f}%", delta_text)
-        else:
-            st.metric("US 10Y Yield", "—", "Unavailable")
-    with metric_cols[2]:
-        row = snap.loc[snap["Ticker"] == "DX-Y.NYB"]
-        if not row.empty and pd.notna(row.iloc[0]["Last"]):
-            item = row.iloc[0]
-            st.metric("US Dollar Index", f"{item['Last']:.2f}", f"{item['Daily %']:+.2f}%" if pd.notna(item["Daily %"]) else "—")
-        else:
-            st.metric("US Dollar Index", "—", "Unavailable")
-    st.caption("Table dates show the latest available trading session, not the page refresh time. Daily bars commonly carry a 00:00 date label; that is the session date, not the actual market-close time. Use Refresh market data to request a fresh provider response.")
-
-    # Compact macro context strip on the Overview; deeper event analysis lives on its own page.
+    # Compact macro context table replaces four full-height cards on small screens.
     st.markdown("#### Macro context")
-    macro_cols = st.columns(4)
+    macro_rows = []
     overview_macro_specs = [("US 10Y yield", "^TNX", "yield"), ("US Dollar Index", "DX-Y.NYB", "price"), ("Gold futures", "GC=F", "price"), ("WTI crude", "CL=F", "price")]
-    for col, (macro_label, macro_ticker, macro_kind) in zip(macro_cols, overview_macro_specs):
-        with col:
-            macro_hist = get_history(macro_ticker, "5d", "1d")
-            if not macro_hist.empty and len(macro_hist) >= 2:
-                macro_hist = macro_hist.sort_values("Date")
-                macro_last = float(macro_hist["Close"].iloc[-1])
-                macro_prev = float(macro_hist["Close"].iloc[-2])
-                if macro_kind == "yield":
-                    macro_delta = f"{(macro_last - macro_prev) * 100:+.0f} bps"
-                    macro_value = f"{macro_last:.2f}%"
-                else:
-                    macro_delta = f"{((macro_last / macro_prev) - 1) * 100:+.2f}%" if macro_prev else "—"
-                    macro_value = f"{macro_last:,.2f}"
-                st.metric(macro_label, macro_value, macro_delta)
+    for macro_label, macro_ticker, macro_kind in overview_macro_specs:
+        macro_hist = get_history(macro_ticker, "5d", "1d")
+        if not macro_hist.empty:
+            macro_hist = macro_hist.sort_values("Date")
+            macro_last = float(macro_hist["Close"].iloc[-1])
+            macro_prev = float(macro_hist["Close"].iloc[-2]) if len(macro_hist) >= 2 else None
+            if macro_kind == "yield":
+                macro_value = f"{macro_last / 10.0:.2f}%"
+                macro_delta = f"{(macro_last - macro_prev) * 10.0:+.1f} bps" if macro_prev is not None else "—"
             else:
-                st.metric(macro_label, "—", "Unavailable")
+                macro_value = f"{macro_last:,.2f}"
+                macro_delta = f"{((macro_last / macro_prev) - 1) * 100:+.2f}%" if macro_prev not in (None, 0) else "—"
+            macro_rows.append({"Indicator": macro_label, "Latest": macro_value, "Daily move": macro_delta})
+        else:
+            macro_rows.append({"Indicator": macro_label, "Latest": "—", "Daily move": "Unavailable"})
+    st.dataframe(
+        pd.DataFrame(macro_rows),
+        hide_index=True,
+        use_container_width=True,
+        height=190,
+        column_config={
+            "Indicator": st.column_config.TextColumn("Indicator", width="medium"),
+            "Latest": st.column_config.TextColumn("Latest", width="small"),
+            "Daily move": st.column_config.TextColumn("Daily move", width="small"),
+        },
+    )
     st.caption("Macro context is a market snapshot, not an official economic calendar. Open Macro & Event Analysis in the sidebar to study historical release windows.")
 
     # Compact jump navigation makes the long Overview easier to scan on mobile.
