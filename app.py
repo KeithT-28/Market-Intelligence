@@ -214,6 +214,31 @@ st.markdown(
     div[data-baseweb="select"] > div, div[data-baseweb="input"] > div {
       background: var(--mi-panel) !important; border-color: var(--mi-border) !important;
     }
+    /* High-contrast search field for the market scanner, including iOS Safari. */
+    [data-testid="stTextInput"] div[data-baseweb="input"] > div {
+      background: #111b2e !important;
+      border: 1px solid #3a4b66 !important;
+      border-radius: 10px !important;
+      box-shadow: none !important;
+    }
+    [data-testid="stTextInput"] input {
+      color: #f3f6fc !important;
+      -webkit-text-fill-color: #f3f6fc !important;
+      caret-color: #93c5fd !important;
+      background: transparent !important;
+    }
+    [data-testid="stTextInput"] input::placeholder {
+      color: #a8b5c8 !important;
+      -webkit-text-fill-color: #a8b5c8 !important;
+      opacity: 1 !important;
+    }
+    [data-testid="stTextInput"] div[data-baseweb="input"]:focus-within > div {
+      border-color: #60a5fa !important;
+      box-shadow: 0 0 0 1px #60a5fa !important;
+    }
+    /* Keep the chart and instrument controls visually grouped on mobile. */
+    [data-testid="stPlotlyChart"] { margin-bottom: -.35rem; }
+    [data-testid="stExpander"] { margin-top: .2rem; }
     button[kind="secondary"], button[kind="primary"] { border-radius: 9px !important; }
     div[data-testid="stDownloadButton"] button {
       background: #17345a !important; color: #f8fafc !important;
@@ -998,7 +1023,11 @@ if page == "Overview":
         active_industry_label = trend_industry_filter if trend_industry_filter != "All industries" else "All industries"
         active_signal_label = trend_signal_filter if trend_signal_filter != "All signals" else "All signals"
         active_direction_label = trend_direction
-        st.caption(f"View: {active_asset_label} · {active_industry_label} · {active_signal_label} · {trend_sort} · {active_direction_label}")
+        view_summary = f"View: {active_asset_label} · {active_industry_label} · {active_signal_label} · {trend_sort} · {active_direction_label}"
+        if search_query:
+            # Keep the active query visible so filtered rankings remain interpretable.
+            view_summary += f" · Search: {search_query}"
+        st.caption(view_summary)
         ascending = trend_direction == "Top losers"
         filtered_trends = filtered_trends.sort_values(trend_sort, ascending=ascending, na_position="last")
         if trend_direction != "All":
@@ -1049,6 +1078,7 @@ if page == "Overview":
                 tickfont=dict(color="#F8FAFC", size=10),
             )
             chart.update_yaxes(showgrid=False, automargin=True, tickfont=dict(color="#F8FAFC", size=10))
+            st.caption("Select a bar to inspect that instrument below. If your browser does not register chart selection, use the instrument selector.")
             chart_event = st.plotly_chart(
                 chart, width="stretch", theme=None,
                 config={"displayModeBar": False, "responsive": True},
