@@ -78,6 +78,31 @@ FX_UNIVERSE = {
     "USD/SEK": "SEK=X",
 }
 
+# Major commodity futures benchmarks available through Yahoo Finance.
+# This is a practical watchlist of liquid global contracts, not a live ranking
+# by current exchange trading volume. Futures prices may be delayed.
+COMMODITY_UNIVERSE = {
+    "Gold": "GC=F",
+    "Silver": "SI=F",
+    "WTI Crude Oil": "CL=F",
+    "Brent Crude Oil": "BZ=F",
+    "Natural Gas": "NG=F",
+    "Copper": "HG=F",
+    "Corn": "ZC=F",
+    "Soybeans": "ZS=F",
+    "Wheat": "ZW=F",
+    "Coffee": "KC=F",
+    "Sugar": "SB=F",
+    "Platinum": "PL=F",
+}
+
+COMMODITY_CATEGORIES = {
+    "Precious Metals": ["Gold", "Silver", "Platinum"],
+    "Energy": ["WTI Crude Oil", "Brent Crude Oil", "Natural Gas"],
+    "Industrial Metals": ["Copper"],
+    "Agriculture": ["Corn", "Soybeans", "Wheat", "Coffee", "Sugar"],
+}
+
 PERIOD_OPTIONS = {
     "1D": ("1d", "5m"),
     "5D": ("5d", "15m"),
@@ -465,7 +490,7 @@ st.sidebar.markdown(
 )
 page = st.sidebar.radio(
     "WORKSPACE",
-    ["Overview", "ETF Explorer", "Sector Monitor", "G10 FX", "Instrument Explorer"],
+    ["Overview", "ETF Explorer", "Sector Monitor", "G10 FX", "Commodities", "Instrument Explorer"],
 )
 st.sidebar.divider()
 period_label = st.sidebar.selectbox("Chart period", list(PERIOD_OPTIONS.keys()), index=2)
@@ -475,7 +500,7 @@ if st.sidebar.button("↻ Refresh data", use_container_width=True):
     st.rerun()
 
 st.markdown(
-    "<div class='mi-brand'><span class='mi-mark'>↗</span><div><div class='mi-eyebrow'>MARKET INTELLIGENCE / GLOBAL MARKETS</div><div class='mi-title'>Market Intelligence</div><div class='mi-subtitle'>US equities · ETFs · GICS sectors · G10 FX</div></div></div>",
+    "<div class='mi-brand'><span class='mi-mark'>↗</span><div><div class='mi-eyebrow'>MARKET INTELLIGENCE / GLOBAL MARKETS</div><div class='mi-title'>Market Intelligence</div><div class='mi-subtitle'>US equities · ETFs · GICS sectors · G10 FX · Commodities · Commodities</div></div></div>",
     unsafe_allow_html=True,
 )
 refresh_col, refresh_note_col = st.columns([1, 2])
@@ -489,7 +514,7 @@ st.markdown("<div class='mi-section-note'>Market data is sourced via Yahoo Finan
 
 if page == "Overview":
     st.markdown("<div class='mi-eyebrow'>MARKET PULSE</div><h2>Market snapshot</h2>", unsafe_allow_html=True)
-    overview_tickers = tuple(dict.fromkeys(("^GSPC", "^NDX", "^TNX", "DX-Y.NYB", "SPY", "QQQ", "IWM", "TLT", "GLD", *FX_UNIVERSE.values())))
+    overview_tickers = tuple(dict.fromkeys(("^GSPC", "^NDX", "^TNX", "DX-Y.NYB", "SPY", "QQQ", "IWM", "TLT", "GLD", *FX_UNIVERSE.values(), *COMMODITY_UNIVERSE.values())))
     snap = get_snapshot(overview_tickers)
     display_names = {
         "^GSPC": "S&P 500", "^NDX": "Nasdaq 100", "^TNX": "US 10Y Yield", "DX-Y.NYB": "US Dollar Index",
@@ -497,6 +522,7 @@ if page == "Overview":
         "TLT": "TLT", "GLD": "GLD", "EURUSD=X": "EUR/USD", "JPY=X": "USD/JPY",
         "GBPUSD=X": "GBP/USD", "AUDUSD=X": "AUD/USD", "CHF=X": "USD/CHF",
         "CAD=X": "USD/CAD", "NZDUSD=X": "NZD/USD", "NOK=X": "USD/NOK", "SEK=X": "USD/SEK",
+        **{ticker: name for name, ticker in COMMODITY_UNIVERSE.items()},
     }
 
     # Keep the S&P 500 as the only prominent market metric; show everything else
@@ -642,11 +668,25 @@ if page == "Overview":
             width="stretch", hide_index=True,
         )
 
+    st.markdown("<div class='mi-eyebrow'>COMMODITIES</div><h2>Commodity performance</h2>", unsafe_allow_html=True)
+    commodity_tickers = tuple(COMMODITY_UNIVERSE.values())
+    commodity_data = snap.loc[snap["Ticker"].isin(commodity_tickers)].copy()
+    if not commodity_data.empty:
+        commodity_names = {ticker: name for name, ticker in COMMODITY_UNIVERSE.items()}
+        commodity_data["Commodity"] = commodity_data["Ticker"].map(commodity_names)
+        commodity_data = commodity_data.sort_values("Daily %", ascending=False, na_position="last")
+        commodity_table = compact_observation_times(commodity_data[["Commodity", "Ticker", "Last", "Daily %", "As of"]])
+        st.dataframe(
+            style_market_table(commodity_table, {"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}),
+            width="stretch", hide_index=True,
+        )
+    st.caption("Commodity watchlist uses major futures benchmarks. The selection is not a real-time ranking of the ten most-traded contracts; contract liquidity varies by exchange and date.")
+
     st.markdown("<div class='mi-eyebrow'>CHARTING</div><h2>Quick chart</h2>", unsafe_allow_html=True)
     st.caption("Choose an asset group first, then select the instrument you want to inspect.")
     quick_group = st.selectbox(
         "Asset group",
-        ["Major ETFs", "FX", "Sectors"],
+        ["Major ETFs", "FX", "Sectors", "Commodities"],
         key="overview_quick_chart_group",
     )
     if quick_group == "Major ETFs":
@@ -659,6 +699,8 @@ if page == "Overview":
         }
     elif quick_group == "FX":
         quick_options = FX_UNIVERSE
+    elif quick_group == "Commodities":
+        quick_options = COMMODITY_UNIVERSE
     else:
         quick_options = {f"{sector} ({ticker})": ticker for sector, ticker in SECTOR_ETFS.items()}
     quick_label = st.selectbox(
@@ -703,10 +745,29 @@ elif page == "G10 FX":
     fx_table = compact_observation_times(fx_snap[["Pair", "Ticker", "Last", "Daily %", "As of"]])
     st.dataframe(style_market_table(fx_table, {"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}), width="stretch", hide_index=True)
 
+elif page == "Commodities":
+    st.markdown("<div class='mi-eyebrow'>REAL ASSETS</div><h2>Commodity Monitor</h2>", unsafe_allow_html=True)
+    st.caption("Gold and silver plus ten additional major commodity futures benchmarks across energy, metals and agriculture. This is a practical watchlist, not a definitive live ranking by trading volume.")
+    commodity_category = st.selectbox("Commodity group", ["All commodities", *COMMODITY_CATEGORIES.keys()], key="commodity_group")
+    if commodity_category == "All commodities":
+        commodity_options = COMMODITY_UNIVERSE
+    else:
+        commodity_options = {name: COMMODITY_UNIVERSE[name] for name in COMMODITY_CATEGORIES[commodity_category]}
+    commodity_label = st.selectbox("Commodity", list(commodity_options.keys()), key="commodity_instrument")
+    render_instrument(commodity_options[commodity_label], period_label, commodity_label)
+    st.markdown("#### Commodity watchlist")
+    commodity_snap = get_snapshot(tuple(COMMODITY_UNIVERSE.values()))
+    commodity_names = {ticker: name for name, ticker in COMMODITY_UNIVERSE.items()}
+    commodity_snap["Commodity"] = commodity_snap["Ticker"].map(commodity_names)
+    commodity_snap = commodity_snap.sort_values("Daily %", ascending=False, na_position="last")
+    commodity_table = compact_observation_times(commodity_snap[["Commodity", "Ticker", "Last", "Daily %", "As of"]])
+    st.dataframe(style_market_table(commodity_table, {"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}), width="stretch", hide_index=True)
+    st.caption("Prices are futures quotes from Yahoo Finance and may be delayed. Futures contracts can have different units, expiries and roll characteristics; do not compare nominal prices across commodities directly.")
+
 else:
     st.markdown("<div class='mi-eyebrow'>CHARTING & RETURNS</div><h2>Instrument Explorer</h2>", unsafe_allow_html=True)
     st.caption("Explore one instrument at a time using a consistent layout for ETFs, stocks, currencies and indices.")
-    mode = st.radio("Asset class", ["ETF", "Stock", "G10 FX", "Index"], horizontal=True, key="explorer_asset_class")
+    mode = st.radio("Asset class", ["ETF", "Stock", "G10 FX", "Commodities", "Index"], horizontal=True, key="explorer_asset_class")
     if mode == "ETF":
         options = ETF_UNIVERSE
     elif mode == "Stock":
@@ -714,6 +775,8 @@ else:
         options = {x: x for x in all_companies}
     elif mode == "G10 FX":
         options = FX_UNIVERSE
+    elif mode == "Commodities":
+        options = COMMODITY_UNIVERSE
     else:
         options = {"S&P 500": "^GSPC", "Dow Jones Industrial Average": "^DJI", "Nasdaq Composite": "^IXIC", "Russell 2000": "^RUT"}
 
@@ -725,4 +788,4 @@ else:
     render_explorer_view(options[label], explorer_period, label)
 
 st.divider()
-st.caption("Built with Streamlit, Plotly, pandas and yfinance · Personal research only, not investment advice · Verify market data with your broker or licensed provider before making decisions.")
+st.caption("Built with Streamlit, Plotly, pandas and yfinance · Personal research only, not investment advice · Futures data may be delayed; verify market data with your broker or licensed provider before making decisions.")
