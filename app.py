@@ -1,4 +1,5 @@
 import datetime as dt
+import html
 from typing import Dict, List
 from urllib.parse import quote_plus
 
@@ -174,7 +175,15 @@ st.markdown(
       .mi-trend-tile-name { color:#E7EDF7; font-size:12px; font-weight:700; margin-top:7px; line-height:1.3; overflow-wrap:anywhere; }
       .mi-trend-tile-detail { color:#6EE7A0; font-size:16px; font-weight:800; margin-top:4px; }
       .mi-trend-tile-ticker { color:#91A2BA; font-size:10px; margin-top:2px; }
-      @media (max-width: 520px) { .mi-trend-summary-grid { gap:6px; } .mi-trend-tile { padding:8px 6px; } .mi-trend-tile-label { font-size:9px; letter-spacing:.02em; } .mi-trend-tile-name { font-size:11px; } .mi-trend-tile-detail { font-size:14px; } }
+      .mi-event-summary-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:10px 0 16px; }
+      .mi-event-summary-card { min-width:0; background:linear-gradient(145deg,#142036,#101827); border:1px solid #26364F; border-radius:11px; padding:10px 11px; }
+      .mi-event-summary-label { color:#9FB2CB; font-size:10px; font-weight:750; letter-spacing:.035em; line-height:1.35; }
+      .mi-event-summary-name { color:#E7EDF7; font-size:12px; font-weight:700; line-height:1.35; margin-top:5px; overflow-wrap:anywhere; }
+      .mi-event-summary-value { font-size:16px; font-weight:800; line-height:1.25; margin-top:5px; }
+      .mi-event-summary-value.positive { color:#6EE7A0; }
+      .mi-event-summary-value.negative { color:#FDA4AF; }
+      .mi-event-summary-value.neutral { color:#E7EDF7; }
+      @media (max-width: 520px) { .mi-trend-summary-grid { gap:6px; } .mi-trend-tile { padding:8px 6px; } .mi-trend-tile-label { font-size:9px; letter-spacing:.02em; } .mi-trend-tile-name { font-size:11px; } .mi-trend-tile-detail { font-size:14px; } .mi-event-summary-grid { gap:6px; } .mi-event-summary-card { padding:9px 7px; } .mi-event-summary-label { font-size:9px; letter-spacing:0; } .mi-event-summary-name { font-size:10px; } .mi-event-summary-value { font-size:14px; } }
     :root {
       --mi-bg: #0b1120;
       --mi-panel: #111b2e;
@@ -1739,18 +1748,45 @@ elif page == "Macro & Event Analysis":
             st.caption(f"{event_type} · selected release date: {event_date:%Y-%m-%d}. Some instruments mapped to different next available sessions; check the Event session column.")
 
         chosen_return_col = f"T+{post_sessions} return (%)"
-        result_col1, result_col2, result_col3 = st.columns(3)
         sectors_only_df = event_df[event_df["Group"] == "Sector"]
         if not sectors_only_df.empty:
             best = sectors_only_df.sort_values(chosen_return_col, ascending=False).iloc[0]
             worst = sectors_only_df.sort_values(chosen_return_col, ascending=True).iloc[0]
-            result_col1.metric(f"Best sector · T+{post_sessions}", best["Instrument"], f"{best[chosen_return_col]:+.2f}%")
-            result_col2.metric(f"Weakest sector · T+{post_sessions}", worst["Instrument"], f"{worst[chosen_return_col]:+.2f}%")
+            best_name = str(best["Instrument"])
+            best_value = float(best[chosen_return_col])
+            worst_name = str(worst["Instrument"])
+            worst_value = float(worst[chosen_return_col])
         else:
-            result_col1.metric("Sectors included", "No sector data")
-            result_col2.metric("Sectors included", "No sector data")
+            best_name, best_value = "No sector data", None
+            worst_name, worst_value = "No sector data", None
         spy_row = event_df[event_df["Ticker"] == "SPY"]
-        result_col3.metric("S&P 500 proxy", f"{spy_row.iloc[0][chosen_return_col]:+.2f}%" if not spy_row.empty else "Not included")
+        spy_value = float(spy_row.iloc[0][chosen_return_col]) if not spy_row.empty else None
+
+        def event_value_class(value):
+            if value is None:
+                return "neutral"
+            return "positive" if value > 0 else ("negative" if value < 0 else "neutral")
+
+        def event_value_text(value):
+            return f"{value:+.2f}%" if value is not None else "Not included"
+
+        # HTML summary tiles stay side-by-side on narrow mobile screens, unlike
+        # Streamlit metric columns which may stack vertically in mobile Safari.
+        summary_cards = [
+            (f"BEST SECTOR · T+{post_sessions}", best_name, best_value),
+            (f"WEAKEST SECTOR · T+{post_sessions}", worst_name, worst_value),
+            ("S&P 500 PROXY", "SPY", spy_value),
+        ]
+        card_html = []
+        for label, name, value in summary_cards:
+            card_html.append(
+                "<div class='mi-event-summary-card'>"
+                f"<div class='mi-event-summary-label'>{html.escape(label)}</div>"
+                f"<div class='mi-event-summary-name'>{html.escape(name)}</div>"
+                f"<div class='mi-event-summary-value {event_value_class(value)}'>{html.escape(event_value_text(value))}</div>"
+                "</div>"
+            )
+        st.markdown("<div class='mi-event-summary-grid'>" + "".join(card_html) + "</div>", unsafe_allow_html=True)
 
         plot_df = pd.DataFrame(event_paths)
         if not plot_df.empty:
@@ -1768,8 +1804,9 @@ elif page == "Macro & Event Analysis":
             )
             fig.update_layout(
                 template="plotly_dark", paper_bgcolor="#0B1220", plot_bgcolor="#0B1220",
-                font=dict(color="#F8FAFC", size=11), height=340,
-                margin=dict(l=8, r=8, t=16, b=35), legend_title_text="",
+                font=dict(color="#F8FAFC", size=11), height=300,
+                margin=dict(l=8, r=8, t=12, b=58), legend_title_text="",
+                legend=dict(orientation="h", yanchor="top", y=-0.20, xanchor="left", x=0, font=dict(size=10)),
                 hoverlabel=dict(bgcolor="#172033", bordercolor="#475569", font=dict(color="#FFFFFF", size=12)),
             )
             fig.update_xaxes(tickmode="array", tickvals=list(range(-5, post_sessions + 1)), ticktext=order, title=None, color="#F8FAFC", gridcolor="rgba(148,163,184,.15)")
