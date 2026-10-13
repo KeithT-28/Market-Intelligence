@@ -91,15 +91,66 @@ PERIOD_OPTIONS = {
 }
 
 # -----------------------------
-# Styling
+# Styling — dark market terminal
 # -----------------------------
 st.markdown(
     """
     <style>
-    .block-container {padding-top: 1.25rem; padding-bottom: 2rem; max-width: 1500px;}
-    [data-testid="stMetric"] {background: rgba(128,128,128,0.07); padding: 14px 16px; border-radius: 12px; border: 1px solid rgba(128,128,128,0.15);}
-    [data-testid="stSidebar"] {border-right: 1px solid rgba(128,128,128,0.18);}
-    .small-muted {font-size: 0.82rem; opacity: 0.72;}
+    :root {
+      --mi-bg: #0b1120;
+      --mi-panel: #111b2e;
+      --mi-panel-2: #162238;
+      --mi-border: #26364f;
+      --mi-text: #e7edf7;
+      --mi-muted: #91a1b9;
+      --mi-accent: #60a5fa;
+      --mi-green: #34d399;
+      --mi-red: #fb7185;
+    }
+    html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
+      background: var(--mi-bg) !important;
+      color: var(--mi-text) !important;
+    }
+    [data-testid="stHeader"] { background: rgba(11,17,32,0.92) !important; }
+    [data-testid="stSidebar"] { background: #0e1728 !important; border-right: 1px solid var(--mi-border); }
+    [data-testid="stSidebar"] * { color: var(--mi-text); }
+    .block-container { padding-top: 1.15rem; padding-bottom: 2rem; max-width: 1500px; }
+    h1, h2, h3 { letter-spacing: -0.025em; color: #f3f6fc !important; }
+    h1 { font-size: clamp(1.55rem, 3vw, 2.15rem) !important; }
+    h2 { font-size: clamp(1.2rem, 2.4vw, 1.55rem) !important; }
+    h3 { font-size: 1.08rem !important; }
+    p, label, [data-testid="stMarkdownContainer"] { color: var(--mi-text); }
+    [data-testid="stCaptionContainer"] { color: var(--mi-muted) !important; }
+    [data-testid="stMetric"] {
+      background: linear-gradient(145deg, #142039, #10192a) !important;
+      padding: 15px 17px; border-radius: 13px;
+      border: 1px solid var(--mi-border); box-shadow: 0 6px 18px rgba(0,0,0,.12);
+    }
+    [data-testid="stMetricLabel"] { color: var(--mi-muted) !important; font-size: .84rem !important; }
+    [data-testid="stMetricValue"] { color: #f8fafc !important; font-weight: 650; }
+    [data-testid="stMetricDelta"] { font-weight: 650; }
+    [data-testid="stDataFrame"] { border: 1px solid var(--mi-border); border-radius: 10px; overflow: hidden; }
+    [data-testid="stDataFrame"] iframe { border-radius: 10px; }
+    [data-testid="stVerticalBlockBorderWrapper"] { border-color: var(--mi-border) !important; background: var(--mi-panel); }
+    div[data-baseweb="select"] > div, div[data-baseweb="input"] > div {
+      background: var(--mi-panel) !important; border-color: var(--mi-border) !important;
+    }
+    button[kind="secondary"], button[kind="primary"] { border-radius: 9px !important; }
+    .mi-brand { display:flex; align-items:center; gap:.7rem; margin:.15rem 0 .35rem; }
+    .mi-mark { display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius:11px; background:#17345a; color:#93c5fd; font-size:1.25rem; border:1px solid #2a4c78; }
+    .mi-title { font-size:1.35rem; font-weight:750; letter-spacing:.045em; color:#f8fafc; }
+    .mi-subtitle { color:var(--mi-muted); font-size:.86rem; margin-top:.1rem; }
+    .mi-eyebrow { color:#7dd3fc; font-size:.72rem; font-weight:750; letter-spacing:.13em; text-transform:uppercase; }
+    .mi-section-note { color:var(--mi-muted); font-size:.82rem; margin-top:-.4rem; margin-bottom:.65rem; }
+    .mi-chip { display:inline-block; padding:.2rem .5rem; border-radius:6px; background:#172944; border:1px solid #294568; color:#93c5fd; font-size:.73rem; }
+    @media (max-width: 768px) {
+      .block-container { padding: .7rem .7rem 1.5rem .7rem; }
+      [data-testid="stMetric"] { padding: 10px 11px; }
+      [data-testid="stMetricValue"] { font-size: 1.35rem !important; }
+      [data-testid="stDataFrame"] { font-size: .82rem; }
+      .mi-title { font-size: 1.1rem; }
+      .mi-mark { width:32px; height:32px; }
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -172,10 +223,10 @@ def color_daily_pct(value):
     if pd.isna(number):
         return ""
     if number > 0:
-        return "color: #16803c; font-weight: 600;"
+        return "color: #34d399; font-weight: 700;"
     if number < 0:
-        return "color: #dc2626; font-weight: 600;"
-    return "color: #6b7280;"
+        return "color: #fb7185; font-weight: 700;"
+    return "color: #94a3b8;"
 
 
 def format_price(value, ticker: str) -> str:
@@ -238,7 +289,7 @@ def render_price_chart(data: pd.DataFrame, ticker: str, interval_label: str):
         hovertemplate="%{x}<br>Price: %{y:,.4f}<extra></extra>",
     ))
     fig.update_layout(
-        template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white",
+        template="plotly_dark",
         height=390, margin=dict(l=8, r=8, t=22, b=8),
         xaxis_title=None, yaxis_title="Price",
         hovermode="x unified", showlegend=False,
@@ -318,7 +369,7 @@ def render_explorer_view(ticker: str, period_label: str, name: str = ""):
             hovertemplate="%{x}<br>Price: %{y:,.4f}<extra></extra>",
         ))
         fig.update_layout(
-            template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white",
+            template="plotly_dark",
             height=310, margin=dict(l=8, r=8, t=8, b=8),
             xaxis_title=None, yaxis_title=None, showlegend=False, hovermode="x unified",
         )
@@ -345,31 +396,36 @@ def render_explorer_view(ticker: str, period_label: str, name: str = ""):
 # -----------------------------
 # Sidebar / navigation
 # -----------------------------
-st.sidebar.markdown("## MARKET INTELLIGENCE")
-st.sidebar.caption("A personal multi-asset market monitor")
+st.sidebar.markdown(
+    "<div class='mi-brand'><span class='mi-mark'>↗</span><div><div style='font-weight:750;letter-spacing:.06em'>MARKET INTEL</div><div style='font-size:.75rem;color:#91a1b9'>MULTI-ASSET MONITOR</div></div></div>",
+    unsafe_allow_html=True,
+)
 page = st.sidebar.radio(
-    "Navigation",
+    "WORKSPACE",
     ["Overview", "ETF Explorer", "Sector Monitor", "G10 FX", "Instrument Explorer"],
 )
 st.sidebar.divider()
 period_label = st.sidebar.selectbox("Chart period", list(PERIOD_OPTIONS.keys()), index=2)
-st.sidebar.caption("Data refresh: cached for 5 minutes. Use the refresh button to request new data.")
+st.sidebar.caption("Data cache: 5 minutes · quotes may be delayed")
 if st.sidebar.button("↻ Refresh data", use_container_width=True):
     st.cache_data.clear()
     st.rerun()
 
-st.title("Market Intelligence")
-st.caption("US equity markets • ETFs • GICS sectors • G10 FX")
-st.info("Data notice: this starter version uses Yahoo Finance via yfinance. Quote delays, symbol coverage and intraday availability vary. Prices are for information only and should not be treated as guaranteed real-time exchange quotes.")
+st.markdown(
+    "<div class='mi-brand'><span class='mi-mark'>↗</span><div><div class='mi-eyebrow'>MARKET INTELLIGENCE / GLOBAL MARKETS</div><div class='mi-title'>Market Intelligence</div><div class='mi-subtitle'>US equities · ETFs · GICS sectors · G10 FX</div></div></div>",
+    unsafe_allow_html=True,
+)
+st.markdown("<div class='mi-section-note'>Market data is sourced via Yahoo Finance and is not guaranteed real-time. Verify prices with your broker or licensed provider.</div>", unsafe_allow_html=True)
 
 if page == "Overview":
-    st.markdown("### Market snapshot")
+    st.markdown("<div class='mi-eyebrow'>MARKET PULSE</div><h2>Market snapshot</h2>", unsafe_allow_html=True)
     overview_tickers = tuple(dict.fromkeys(("^GSPC", "SPY", "QQQ", "IWM", "TLT", "GLD", *FX_UNIVERSE.values())))
     snap = get_snapshot(overview_tickers)
     display_names = {
         "^GSPC": "S&P 500", "SPY": "SPY", "QQQ": "QQQ", "IWM": "IWM",
         "TLT": "TLT", "GLD": "GLD", "EURUSD=X": "EUR/USD", "JPY=X": "USD/JPY",
-        "GBPUSD=X": "GBP/USD", "AUDUSD=X": "AUD/USD",
+        "GBPUSD=X": "GBP/USD", "AUDUSD=X": "AUD/USD", "CHF=X": "USD/CHF",
+        "CAD=X": "USD/CAD", "NZDUSD=X": "NZD/USD", "NOK=X": "USD/NOK", "SEK=X": "USD/SEK",
     }
 
     # Keep the S&P 500 as the only prominent market metric; show everything else
@@ -393,7 +449,7 @@ if page == "Overview":
     fx_tickers = tuple(dict.fromkeys(FX_UNIVERSE.values()))
     etf_tickers = ("SPY", "QQQ", "IWM", "TLT", "GLD")
 
-    st.markdown("### Major ETFs")
+    st.markdown("<div class='mi-eyebrow'>CROSS-ASSET</div><h2>Major ETFs</h2>", unsafe_allow_html=True)
     etf_markets = snap.loc[snap["Ticker"].isin(etf_tickers)].copy()
     if not etf_markets.empty:
         etf_markets["Instrument"] = etf_markets["Ticker"].map(display_names).fillna(etf_markets["Ticker"])
@@ -405,19 +461,56 @@ if page == "Overview":
             hide_index=True,
         )
 
-    st.markdown("### Sector performance")
+    st.markdown("<div class='mi-eyebrow'>EQUITY BREADTH</div><h2>Sector performance</h2>", unsafe_allow_html=True)
     sector_tickers = tuple(SECTOR_ETFS.values())
     sector_data = get_snapshot(sector_tickers)
     name_by_ticker = {v: k for k, v in SECTOR_ETFS.items()}
     if not sector_data.empty:
         sector_data["Sector"] = sector_data["Ticker"].map(name_by_ticker)
         sector_data = sector_data.sort_values("Daily %", ascending=False, na_position="last")
+        # Ranked bar chart provides an immediate view of market leadership.
+        chart_sector = sector_data.dropna(subset=["Daily %"]).sort_values("Daily %", ascending=True)
+        if not chart_sector.empty:
+            bar_colors = ["#34d399" if x >= 0 else "#fb7185" for x in chart_sector["Daily %"]]
+            fig_sector = go.Figure(go.Bar(
+                x=chart_sector["Daily %"], y=chart_sector["Sector"], orientation="h",
+                marker_color=bar_colors,
+                text=[f"{x:+.2f}%" for x in chart_sector["Daily %"]], textposition="outside",
+                hovertemplate="%{y}<br>Daily move: %{x:+.2f}%<extra></extra>",
+            ))
+            fig_sector.update_layout(
+                template="plotly_dark", height=390, margin=dict(l=5, r=48, t=12, b=5),
+                xaxis_title="Daily change (%)", yaxis_title=None, showlegend=False,
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#cbd5e1", size=12),
+            )
+            fig_sector.update_xaxes(gridcolor="rgba(148,163,184,.14)", zeroline=True, zerolinecolor="#64748b")
+            fig_sector.update_yaxes(showgrid=False, automargin=True)
+            st.plotly_chart(fig_sector, use_container_width=True, config={"displayModeBar": False})
         st.dataframe(sector_data[["Sector", "Ticker", "Last", "Daily %", "As of"]].style.format({"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}, na_rep="—").map(color_daily_pct, subset=["Daily %"]), use_container_width=True, hide_index=True)
 
-    st.markdown("### FX performance")
+    st.markdown("<div class='mi-eyebrow'>CURRENCY MARKETS</div><h2>FX performance</h2>", unsafe_allow_html=True)
     fx_data = snap.loc[snap["Ticker"].isin(fx_tickers)].copy()
     if not fx_data.empty:
         fx_data["Pair"] = fx_data["Ticker"].map(display_names).fillna(fx_data["Ticker"])
+        fx_chart = fx_data.dropna(subset=["Daily %"]).sort_values("Daily %", ascending=True)
+        if not fx_chart.empty:
+            fx_colors = ["#34d399" if x >= 0 else "#fb7185" for x in fx_chart["Daily %"]]
+            fig_fx = go.Figure(go.Bar(
+                x=fx_chart["Daily %"], y=fx_chart["Pair"], orientation="h",
+                marker_color=fx_colors,
+                text=[f"{x:+.2f}%" for x in fx_chart["Daily %"]], textposition="outside",
+                hovertemplate="%{y}<br>Daily move: %{x:+.2f}%<extra></extra>",
+            ))
+            fig_fx.update_layout(
+                template="plotly_dark", height=320, margin=dict(l=5, r=45, t=8, b=5),
+                xaxis_title="Daily change (%)", yaxis_title=None, showlegend=False,
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#cbd5e1", size=12),
+            )
+            fig_fx.update_xaxes(gridcolor="rgba(148,163,184,.14)", zeroline=True, zerolinecolor="#64748b")
+            fig_fx.update_yaxes(showgrid=False, automargin=True)
+            st.plotly_chart(fig_fx, use_container_width=True, config={"displayModeBar": False})
         st.dataframe(
             fx_data[["Pair", "Ticker", "Last", "Daily %", "As of"]].style.format(
                 {"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}, na_rep="—"
@@ -426,7 +519,7 @@ if page == "Overview":
             hide_index=True,
         )
 
-    st.markdown("### Quick chart")
+    st.markdown("<div class='mi-eyebrow'>CHARTING</div><h2>Quick chart</h2>", unsafe_allow_html=True)
     st.caption("Choose an asset group first, then select the instrument you want to inspect.")
     quick_group = st.selectbox(
         "Asset group",
@@ -453,31 +546,28 @@ if page == "Overview":
     render_instrument(quick_options[quick_label], period_label, quick_label)
 
 elif page == "ETF Explorer":
-    st.markdown("### ETF Explorer")
+    st.markdown("<div class='mi-eyebrow'>RESEARCH</div><h2>ETF Explorer</h2>", unsafe_allow_html=True)
     etf_label = st.selectbox("ETF universe", list(ETF_UNIVERSE.keys()))
     ticker = ETF_UNIVERSE[etf_label]
     render_instrument(ticker, period_label, etf_label)
 
 elif page == "Sector Monitor":
-    st.markdown("### Sector Monitor")
+    st.markdown("<div class='mi-eyebrow'>EQUITY RESEARCH</div><h2>Sector Monitor</h2>", unsafe_allow_html=True)
     sector = st.selectbox("Select GICS sector", list(SECTOR_ETFS.keys()))
     sector_etf = SECTOR_ETFS[sector]
-    left, right = st.columns([1, 2])
-    with left:
-        st.markdown("#### Sector ETF")
-        render_instrument(sector_etf, period_label, f"{sector} ({sector_etf})")
-    with right:
-        st.markdown("#### Company constituents")
-        st.caption("Starter list of representative large-cap constituents. This list is not guaranteed to be the current top 10 by market capitalisation; dynamic rankings require a reliable constituent/market-cap data source.")
-        company_tickers = SECTOR_COMPANIES[sector]
-        company_snap = get_snapshot(tuple(company_tickers))
-        company_snap = company_snap.sort_values("Daily %", ascending=False, na_position="last")
-        st.dataframe(company_snap.style.format({"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}, na_rep="—").map(color_daily_pct, subset=["Daily %"]), use_container_width=True, hide_index=True)
-        selected_company = st.selectbox("Open company chart", company_tickers)
-        render_instrument(selected_company, period_label)
+    st.markdown("#### Sector ETF")
+    render_instrument(sector_etf, period_label, f"{sector} ({sector_etf})")
+    st.markdown("#### Company constituents")
+    st.caption("Representative large-cap names, not a guaranteed current market-cap ranking.")
+    company_tickers = SECTOR_COMPANIES[sector]
+    company_snap = get_snapshot(tuple(company_tickers))
+    company_snap = company_snap.sort_values("Daily %", ascending=False, na_position="last")
+    st.dataframe(company_snap.style.format({"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}, na_rep="—").map(color_daily_pct, subset=["Daily %"]), use_container_width=True, hide_index=True)
+    selected_company = st.selectbox("Open company chart", company_tickers)
+    render_instrument(selected_company, period_label)
 
 elif page == "G10 FX":
-    st.markdown("### G10 FX Monitor")
+    st.markdown("<div class='mi-eyebrow'>CURRENCY MARKETS</div><h2>G10 FX Monitor</h2>", unsafe_allow_html=True)
     st.caption("Yahoo Finance symbols and quote conventions vary by pair. Always verify the displayed pair and last-updated timestamp.")
     fx_label = st.selectbox("Currency pair", list(FX_UNIVERSE.keys()))
     ticker = FX_UNIVERSE[fx_label]
@@ -489,7 +579,7 @@ elif page == "G10 FX":
     st.dataframe(fx_snap[["Pair", "Ticker", "Last", "Daily %", "As of"]].style.format({"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}, na_rep="—").map(color_daily_pct, subset=["Daily %"]), use_container_width=True, hide_index=True)
 
 else:
-    st.markdown("### Instrument Explorer")
+    st.markdown("<div class='mi-eyebrow'>CHARTING & RETURNS</div><h2>Instrument Explorer</h2>", unsafe_allow_html=True)
     st.caption("Explore one instrument at a time using a consistent layout for ETFs, stocks, currencies and indices.")
     mode = st.radio("Asset class", ["ETF", "Stock", "G10 FX", "Index"], horizontal=True, key="explorer_asset_class")
     if mode == "ETF":
@@ -510,4 +600,4 @@ else:
     render_explorer_view(options[label], explorer_period, label)
 
 st.divider()
-st.caption("Built with Streamlit, Plotly, pandas and yfinance. This is a personal research dashboard, not investment advice. Verify market data with your broker or licensed data provider before making decisions.")
+st.caption("Built with Streamlit, Plotly, pandas and yfinance · Personal research only, not investment advice · Verify market data with your broker or licensed provider before making decisions.")
