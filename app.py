@@ -389,7 +389,8 @@ def color_daily_pct(value):
 
 def style_market_table(data: pd.DataFrame, formats: dict | None = None) -> pd.io.formats.style.Styler:
     """Apply consistent dark terminal styling to all dataframe tables."""
-    styler = data.style
+    # Hide the pandas row index so no numeric index column appears in rendered tables.
+    styler = data.style.hide(axis="index")
     if formats:
         styler = styler.format(formats, na_rep="—")
     # Explicit cell backgrounds are needed because pandas Styler otherwise
