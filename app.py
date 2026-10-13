@@ -239,6 +239,28 @@ st.markdown(
     /* Keep the chart and instrument controls visually grouped on mobile. */
     [data-testid="stPlotlyChart"] { margin-bottom: -.35rem; }
     [data-testid="stExpander"] { margin-top: .2rem; }
+    /* Consistent dark-theme buttons, including the main Refresh market data control. */
+    .stButton > button, [data-testid="stFormSubmitButton"] button {
+      background: #17345a !important;
+      color: #f8fafc !important;
+      -webkit-text-fill-color: #f8fafc !important;
+      border: 1px solid #3b82f6 !important;
+      border-radius: 9px !important;
+      font-weight: 650 !important;
+      box-shadow: none !important;
+    }
+    .stButton > button *, [data-testid="stFormSubmitButton"] button * {
+      color: #f8fafc !important;
+      -webkit-text-fill-color: #f8fafc !important;
+    }
+    .stButton > button:hover, [data-testid="stFormSubmitButton"] button:hover {
+      background: #214775 !important;
+      border-color: #60a5fa !important;
+    }
+    .stButton > button:focus-visible, [data-testid="stFormSubmitButton"] button:focus-visible {
+      outline: 2px solid #93c5fd !important;
+      outline-offset: 2px !important;
+    }
     button[kind="secondary"], button[kind="primary"] { border-radius: 9px !important; }
     div[data-testid="stDownloadButton"] button {
       background: #17345a !important; color: #f8fafc !important;
@@ -1520,7 +1542,8 @@ if page == "Overview":
 
 elif page == "Macro & Event Analysis":
     st.markdown("<div class='mi-eyebrow'>MACRO RESEARCH</div><h2>Macro & Event Analysis</h2>", unsafe_allow_html=True)
-    st.caption("Study how US-listed sectors and major ETFs behaved around a historical macro release. Enter the release date from a trusted calendar; the app does not assume or invent event dates.")
+    st.caption("Study how US-listed sectors and major ETFs behaved around a historical macro release. Enter the actual publication date from a trusted economic calendar; the app does not assume or invent event dates.")
+    st.info("Before running a study, verify the release date and release time with an official source such as the BLS, BEA or Federal Reserve. A market reaction can begin before the calendar date if the release occurred outside regular trading hours.", icon="ℹ️")
 
     event_col1, event_col2 = st.columns([1.15, 1])
     with event_col1:
@@ -1536,11 +1559,15 @@ elif page == "Macro & Event Analysis":
             value=default_event_date,
             min_value=dt.date.today() - dt.timedelta(days=720),
             max_value=dt.date.today(),
-            help="Choose the actual publication date. If the date is not a trading day, the study maps to the next available trading session.",
+            help="Choose the actual publication date from a trusted calendar. If the date is not a trading day, the study maps to the next available trading session.",
             key="macro_event_date",
         )
+    if event_date.weekday() >= 5:
+        st.warning("The selected date falls on a weekend. Confirm the actual release date; the study may map it to the next available trading session.")
+    else:
+        st.caption(f"Selected date: {event_date:%A, %d %B %Y}. This is a user-entered date and is not independently verified by the app.")
 
-    st.markdown("#### Event-study settings")
+    st.markdown("##### Event-study settings")
     left_setting, right_setting = st.columns(2)
     with left_setting:
         event_window = st.selectbox("Post-event horizon", ["T+1 session", "T+3 sessions", "T+5 sessions"], index=2, key="macro_post_horizon")
@@ -1603,7 +1630,7 @@ elif page == "Macro & Event Analysis":
             })
     progress.empty()
 
-    st.markdown("#### Results")
+    st.markdown("##### Results")
     if not event_rows:
         st.warning("No event window could be calculated. Choose a historical release date with at least five trading sessions before it and enough sessions after it. Yahoo Finance history may also be unavailable.")
     else:
@@ -1630,7 +1657,7 @@ elif page == "Macro & Event Analysis":
 
         plot_df = pd.DataFrame(event_paths)
         if not plot_df.empty:
-            st.markdown("#### Return path around the event")
+            st.markdown("##### Return path around the event")
             focus_names = ["S&P 500", "Nasdaq 100", "Long Treasuries", "Gold ETF"]
             if compare_group == "Sectors only":
                 focus_names = ["Information Technology", "Financials", "Energy", "Health Care", "Real Estate"]
@@ -1652,7 +1679,7 @@ elif page == "Macro & Event Analysis":
             fig.update_yaxes(title="Return vs T-1 close (%)", color="#F8FAFC", gridcolor="rgba(148,163,184,.20)", zeroline=True, zerolinecolor="#64748B")
             st.plotly_chart(fig, width="stretch", theme=None, config={"responsive": True, "displayModeBar": False})
 
-        st.markdown(f"#### Sector and benchmark comparison · {chosen_return_col}")
+        st.markdown(f"##### Sector and benchmark comparison · {chosen_return_col}")
         display_event = event_df.sort_values(chosen_return_col, ascending=False).reset_index(drop=True)
         st.dataframe(
             style_market_table(display_event, {"T0 return (%)": "{:+.2f}%", chosen_return_col: "{:+.2f}%", "T-5 to T-1 (%)": "{:+.2f}%"}),
@@ -1666,7 +1693,7 @@ elif page == "Macro & Event Analysis":
         if skipped:
             st.caption("Unavailable or insufficient history: " + ", ".join(skipped))
 
-    st.markdown("#### Macro market context")
+    st.markdown("##### Macro market context")
     st.caption("These are market proxies, not official macroeconomic releases. They can help frame the event but do not prove causation.")
     proxy_cols = st.columns(4)
     proxy_specs = [("US 10Y yield", "^TNX", "yield"), ("US Dollar Index", "DX-Y.NYB", "price"), ("Gold futures", "GC=F", "price"), ("WTI crude", "CL=F", "price")]
