@@ -209,7 +209,7 @@ def get_snapshot(tickers: tuple) -> pd.DataFrame:
             "Ticker": ticker,
             "Last": last,
             "Daily %": change,
-            "As of": pd.Timestamp(hist["Date"].iloc[-1]).strftime("%Y-%m-%d %H:%M"),
+            "As of": pd.Timestamp(hist["Date"].iloc[-1]).strftime("%Y-%m-%d"),
         })
     return pd.DataFrame(rows)
 
@@ -268,7 +268,7 @@ def compact_observation_times(data: pd.DataFrame) -> pd.DataFrame:
         def short_time(value):
             try:
                 stamp = pd.to_datetime(value, errors="raise")
-                return stamp.strftime("%d %b %H:%M")
+                return stamp.strftime("%d %b %Y")
             except (TypeError, ValueError, OverflowError):
                 return value
         result["As of"] = result["As of"].map(short_time)
@@ -349,7 +349,7 @@ def render_price_chart(data: pd.DataFrame, ticker: str, interval_label: str):
         zeroline=False, tickfont=dict(color="#F8FAFC", size=11), ticks="outside", tickcolor="#64748B",
     )
     st.plotly_chart(fig, width="stretch", theme=None, config={"responsive": True, "displayModeBar": False})
-    st.caption(f"Chart interval: {interval_label}. Historical data and quote timing depend on Yahoo Finance coverage; not an exchange-licensed real-time feed.")
+    st.caption(f"Chart interval: {interval_label}. For daily bars, the x-axis date represents the trading session; the 00:00 timestamp is not the market-close time. Data timing depends on Yahoo Finance and is not guaranteed real-time.")
 
 
 def render_instrument(ticker: str, period_label: str, name: str = ""):
@@ -368,7 +368,11 @@ def render_instrument(ticker: str, period_label: str, name: str = ""):
     m1, m2, m3 = st.columns(3)
     m1.metric("Latest available price", format_price(latest, ticker))
     m2.metric("Last bar move", f"{daily_change:+.2f}%" if daily_change is not None else "—")
-    m3.metric("Last data point", pd.Timestamp(data["Date"].iloc[-1]).strftime("%d %b %Y %H:%M"))
+    last_stamp = pd.Timestamp(data["Date"].iloc[-1])
+    if interval == "1d":
+        m3.metric("Last session date", last_stamp.strftime("%d %b %Y"))
+    else:
+        m3.metric("Last data point", last_stamp.strftime("%d %b %Y %H:%M"))
     render_price_chart(data, ticker, interval)
     st.markdown("#### Historical returns")
     with st.spinner("Loading daily history for return calculations…"):
@@ -447,7 +451,9 @@ def render_explorer_view(ticker: str, period_label: str, name: str = ""):
         )
         csv = table.to_csv(index=False).encode("utf-8")
         st.download_button("Download return table (CSV)", csv, file_name=f"{ticker.replace('=', '_')}_returns.csv", mime="text/csv")
-    st.caption(f"Last data point returned: {pd.Timestamp(data['Date'].iloc[-1]).strftime('%d %b %Y %H:%M')} · Chart interval: {interval}.")
+    last_stamp = pd.Timestamp(data["Date"].iloc[-1])
+    last_stamp_text = last_stamp.strftime("%d %b %Y (daily session)") if interval == "1d" else last_stamp.strftime("%d %b %Y %H:%M")
+    st.caption(f"Last data point returned: {last_stamp_text} · Chart interval: {interval}.")
 
 
 # -----------------------------
@@ -472,6 +478,13 @@ st.markdown(
     "<div class='mi-brand'><span class='mi-mark'>↗</span><div><div class='mi-eyebrow'>MARKET INTELLIGENCE / GLOBAL MARKETS</div><div class='mi-title'>Market Intelligence</div><div class='mi-subtitle'>US equities · ETFs · GICS sectors · G10 FX</div></div></div>",
     unsafe_allow_html=True,
 )
+refresh_col, refresh_note_col = st.columns([1, 2])
+with refresh_col:
+    if st.button("↻ Refresh market data", use_container_width=True, key="main_refresh_data"):
+        st.cache_data.clear()
+        st.rerun()
+with refresh_note_col:
+    st.caption("Requests the latest data available from Yahoo Finance. Daily chart dates identify the trading session, not a midnight quote time.")
 st.markdown("<div class='mi-section-note'>Market data is sourced via Yahoo Finance and is not guaranteed real-time. Verify prices with your broker or licensed provider.</div>", unsafe_allow_html=True)
 
 if page == "Overview":
@@ -535,7 +548,7 @@ if page == "Overview":
             st.metric("US Dollar Index", f"{item['Last']:.2f}", f"{item['Daily %']:+.2f}%" if pd.notna(item["Daily %"]) else "—")
         else:
             st.metric("US Dollar Index", "—", "Unavailable")
-    st.caption("Table timestamps show the provider's latest observation, not the time this page was refreshed. Quotes are cached for up to 5 minutes; use Refresh data to request new data.")
+    st.caption("Table dates show the latest available trading session, not the page refresh time. Daily bars commonly carry a 00:00 date label; that is the session date, not the actual market-close time. Use Refresh market data to request a fresh provider response.")
 
     # Keep ETF performance separate from FX performance for easier scanning.
     fx_tickers = tuple(dict.fromkeys(FX_UNIVERSE.values()))
