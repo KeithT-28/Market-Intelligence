@@ -192,8 +192,10 @@ st.markdown(
       [data-testid="stDataFrame"] [role="columnheader"],
       [data-testid="stDataFrame"] [role="columnheader"] *,
       [data-testid="stTable"] thead th,
-      [data-testid="stTable"] thead th * {
-        color:#000000 !important;
+      [data-testid="stTable"] thead th *,
+      table thead th,
+      table thead th * {
+        color:#FFFFFF !important;
         font-weight:800 !important;
       }
       [data-testid="stDataFrame"] [role="grid"] { filter:none !important; opacity:1 !important; }
@@ -400,8 +402,13 @@ def style_market_table(data: pd.DataFrame, formats: dict | None = None) -> pd.io
     styler = styler.set_table_styles([
         {"selector": "th", "props": [
             ("background-color", "#162238"),
-            ("color", "#E7EDF7"),
+            ("color", "#FFFFFF"),
+            ("font-weight", "800"),
             ("border-color", "#26364F"),
+        ]},
+        {"selector": "thead th", "props": [
+            ("color", "#FFFFFF"),
+            ("font-weight", "800"),
         ]},
         {"selector": "td", "props": [("border-color", "#26364F")]},
     ], overwrite=False)
