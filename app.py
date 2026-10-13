@@ -246,6 +246,32 @@ st.markdown(
     }
     div[data-testid="stDownloadButton"] button * { color: #f8fafc !important; }
     div[data-testid="stDownloadButton"] button:hover { background: #214775 !important; border-color: #60a5fa !important; }
+    /* Dark-theme styling for external news search links (Streamlit link buttons). */
+    div[data-testid="stLinkButton"] a,
+    div[data-testid="stLinkButton"] a:link,
+    div[data-testid="stLinkButton"] a:visited {
+      background: #17345a !important;
+      color: #f8fafc !important;
+      -webkit-text-fill-color: #f8fafc !important;
+      border: 1px solid #3b82f6 !important;
+      border-radius: 9px !important;
+      font-weight: 650 !important;
+      box-shadow: none !important;
+      text-decoration: none !important;
+    }
+    div[data-testid="stLinkButton"] a *,
+    div[data-testid="stLinkButton"] a p,
+    div[data-testid="stLinkButton"] a span {
+      color: #f8fafc !important;
+      -webkit-text-fill-color: #f8fafc !important;
+    }
+    div[data-testid="stLinkButton"] a:hover,
+    div[data-testid="stLinkButton"] a:focus-visible {
+      background: #214775 !important;
+      border-color: #60a5fa !important;
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+    }
     .mi-brand { display:flex; align-items:center; gap:.7rem; margin:.15rem 0 .35rem; }
     .mi-mark { display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius:11px; background:#17345a; color:#93c5fd; font-size:1.25rem; border:1px solid #2a4c78; }
     .mi-title { font-size:1.35rem; font-weight:750; letter-spacing:.045em; color:#f8fafc; }
