@@ -189,6 +189,13 @@ st.markdown(
       [data-testid="stMetricValue"] { font-size: 1.35rem !important; }
       [data-testid="stDataFrame"] { font-size: .82rem; filter:none !important; opacity:1 !important; }
       [data-testid="stDataFrame"] canvas { image-rendering:auto; }
+      [data-testid="stDataFrame"] [role="columnheader"],
+      [data-testid="stDataFrame"] [role="columnheader"] *,
+      [data-testid="stTable"] thead th,
+      [data-testid="stTable"] thead th * {
+        color:#000000 !important;
+        font-weight:800 !important;
+      }
       [data-testid="stDataFrame"] [role="grid"] { filter:none !important; opacity:1 !important; }
       .mi-title { font-size: 1.1rem; }
       .mi-mark { width:32px; height:32px; }
