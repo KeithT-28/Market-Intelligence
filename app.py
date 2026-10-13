@@ -248,6 +248,46 @@ st.markdown(
     /* Keep the chart and instrument controls visually grouped on mobile. */
     [data-testid="stPlotlyChart"] { margin-bottom: -.35rem; }
     [data-testid="stExpander"] { margin-top: .2rem; }
+    /* Keep native Streamlit expanders readable against the navy terminal theme. */
+    [data-testid="stExpander"] details,
+    [data-testid="stExpander"] summary,
+    [data-testid="stExpander"] summary:hover,
+    [data-testid="stExpander"] [data-testid="stExpanderDetails"] {
+      background: #0f192b !important;
+      color: #e7edf7 !important;
+      border-color: #26364f !important;
+    }
+    [data-testid="stExpander"] summary p,
+    [data-testid="stExpander"] summary span,
+    [data-testid="stExpander"] summary svg,
+    [data-testid="stExpander"] summary * {
+      color: #e7edf7 !important;
+      fill: #e7edf7 !important;
+      -webkit-text-fill-color: #e7edf7 !important;
+    }
+    .mi-brief-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:.7rem 0 .35rem; }
+    .mi-brief-card { min-width:0; background:linear-gradient(145deg,#142039,#10192a); border:1px solid #26364f; border-radius:12px; padding:11px 12px; }
+    .mi-brief-label { color:#9fb2cb; font-size:.76rem; line-height:1.3; }
+    .mi-brief-value { color:#f3f6fc; font-size:1.2rem; line-height:1.3; font-weight:750; margin-top:5px; overflow-wrap:anywhere; }
+    .mi-brief-move { display:inline-block; border-radius:7px; padding:3px 7px; margin-top:6px; font-size:.85rem; font-weight:750; }
+    .mi-brief-move.positive { color:#6ee7a0; background:rgba(52,211,153,.12); }
+    .mi-brief-move.negative { color:#fda4af; background:rgba(251,113,133,.12); }
+    .mi-brief-move.neutral { color:#cbd5e1; background:rgba(148,163,184,.12); }
+    .mi-brief-detail { color:#91a1b9; font-size:.75rem; margin-top:5px; line-height:1.3; }
+    .mi-event-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; margin:.45rem 0 .6rem; }
+    .mi-event-item { min-width:0; padding:9px 10px; background:#111b2e; border:1px solid #26364f; border-radius:9px; }
+    .mi-event-date { color:#93c5fd; font-size:.76rem; font-weight:800; }
+    .mi-event-name { color:#e7edf7; font-size:.85rem; line-height:1.35; margin-top:3px; overflow-wrap:anywhere; }
+    .mi-event-source { color:#91a1b9; font-size:.72rem; margin-top:4px; }
+    @media (max-width: 520px) {
+      .mi-brief-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }
+      .mi-brief-card { padding:9px 10px; }
+      .mi-brief-value { font-size:1.05rem; }
+      .mi-brief-grid .mi-brief-card:last-child { grid-column:1 / -1; }
+      .mi-event-list { grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+      .mi-event-item { padding:8px; }
+      .mi-event-name { font-size:.8rem; }
+    }
     /* Consistent dark-theme buttons, including the main Refresh market data control. */
     .stButton > button, [data-testid="stFormSubmitButton"] button {
       background: #17345a !important;
@@ -1040,26 +1080,51 @@ if page == "Overview":
     else:
         best_sector = worst_sector = None
 
-    brief_cols = st.columns(3)
-    with brief_cols[0]:
-        if best_stock is not None:
-            st.metric("Top stock · daily", str(best_stock["Ticker"]), f"{best_stock['Daily %']:+.2f}%")
-            st.caption(str(best_stock["Company"]))
-        else:
-            st.metric("Top stock · daily", "—", "Unavailable")
-    with brief_cols[1]:
-        if worst_stock is not None:
-            st.metric("Weakest stock · daily", str(worst_stock["Ticker"]), f"{worst_stock['Daily %']:+.2f}%", delta_color="inverse")
-            st.caption(str(worst_stock["Company"]))
-        else:
-            st.metric("Weakest stock · daily", "—", "Unavailable")
-    with brief_cols[2]:
-        if best_sector is not None:
-            st.metric("Leading sector", str(best_sector["Sector"]), f"{best_sector['Daily %']:+.2f}%")
-            if worst_sector is not None:
-                st.caption(f"Lagging: {worst_sector['Sector']} ({worst_sector['Daily %']:+.2f}%)")
-        else:
-            st.metric("Leading sector", "—", "Unavailable")
+    # If the batched trend download misses sector ETF prices, retry the sector funds
+    # individually. This prevents a missing sector summary from being shown when
+    # individual Yahoo Finance history is available.
+    if best_sector is None:
+        fallback_sector_rows = []
+        for sector_name, sector_ticker in SECTOR_ETFS.items():
+            try:
+                sector_hist = get_history(sector_ticker, "5d", "1d")
+                if sector_hist is None or sector_hist.empty or "Close" not in sector_hist.columns:
+                    continue
+                sector_hist = sector_hist.sort_values("Date") if "Date" in sector_hist.columns else sector_hist.sort_index()
+                close_values = pd.to_numeric(sector_hist["Close"], errors="coerce").dropna()
+                if len(close_values) >= 2 and float(close_values.iloc[-2]) != 0:
+                    daily_move = (float(close_values.iloc[-1]) / float(close_values.iloc[-2]) - 1) * 100
+                    fallback_sector_rows.append({"Instrument": sector_name, "Ticker": sector_ticker,
+                                                  "Asset class": "Sectors", "Sector": sector_name,
+                                                  "Daily %": daily_move})
+            except Exception:
+                continue
+        if fallback_sector_rows:
+            briefing_sector_data = pd.DataFrame(fallback_sector_rows)
+            briefing_sectors = briefing_sector_data.sort_values("Daily %", ascending=False)
+            best_sector = briefing_sectors.iloc[0]
+            worst_sector = briefing_sectors.iloc[-1]
+
+    def brief_card(label, value, move, detail="", direction="neutral"):
+        move_class = "positive" if direction == "positive" else "negative" if direction == "negative" else "neutral"
+        detail_html = f"<div class='mi-brief-detail'>{html.escape(str(detail))}</div>" if detail else ""
+        return (
+            "<div class='mi-brief-card'>"
+            f"<div class='mi-brief-label'>{html.escape(str(label))}</div>"
+            f"<div class='mi-brief-value'>{html.escape(str(value))}</div>"
+            f"<div class='mi-brief-move {move_class}'>{html.escape(str(move))}</div>"
+            f"{detail_html}</div>"
+        )
+
+    best_stock_card = brief_card("Top stock · daily", best_stock["Ticker"],
+                                 f"↑ {best_stock['Daily %']:+.2f}%", best_stock["Company"], "positive" if best_stock["Daily %"] >= 0 else "negative") if best_stock is not None else brief_card("Top stock · daily", "—", "Unavailable")
+    worst_stock_card = brief_card("Weakest stock · daily", worst_stock["Ticker"],
+                                  f"↓ {worst_stock['Daily %']:+.2f}%", worst_stock["Company"], "negative" if worst_stock["Daily %"] < 0 else "positive") if worst_stock is not None else brief_card("Weakest stock · daily", "—", "Unavailable")
+    sector_card = brief_card("Leading sector", best_sector["Sector"],
+                             f"↑ {best_sector['Daily %']:+.2f}%",
+                             f"Lagging: {worst_sector['Sector']} ({worst_sector['Daily %']:+.2f}%)" if worst_sector is not None else "Sector ETF data", 
+                             "positive" if best_sector["Daily %"] >= 0 else "negative") if best_sector is not None else brief_card("Leading sector", "—", "Sector data unavailable", "Retry after refreshing market data")
+    st.markdown("<div class='mi-brief-grid'>" + best_stock_card + worst_stock_card + sector_card + "</div>", unsafe_allow_html=True)
 
     # Cross-asset snapshot uses the same cached price series as the Overview.
     cross_asset_names = {
@@ -1144,8 +1209,16 @@ if page == "Overview":
         key=lambda event: event[0],
     )[:4]
     if future_events:
+        event_cards = []
         for event_date, event_label, event_url, event_source in future_events:
-            st.markdown(f"- **{event_date:%d %b}** · [{event_label}]({event_url}) · {event_source}")
+            event_cards.append(
+                "<div class='mi-event-item'>"
+                f"<div class='mi-event-date'>{event_date:%d %b %Y}</div>"
+                f"<div class='mi-event-name'>{html.escape(event_label)}</div>"
+                f"<div class='mi-event-source'><a href='{html.escape(event_url, quote=True)}' target='_blank' rel='noopener noreferrer'>{html.escape(event_source)}</a></div>"
+                "</div>"
+            )
+        st.markdown("<div class='mi-event-list'>" + "".join(event_cards) + "</div>", unsafe_allow_html=True)
     else:
         st.markdown(
             "- [BLS CPI calendar](https://www.bls.gov/schedule/news_release/cpi.htm) · "
