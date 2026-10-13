@@ -860,15 +860,7 @@ if page == "Overview":
         })
         for return_column in ["Daily %", "5D %", "30D %", "Acceleration"]:
             trend_styler = trend_styler.map(color_daily_pct, subset=[return_column])
-        st.dataframe(
-            trend_styler, width="stretch", hide_index=True,
-            column_config={
-                "Instrument": st.column_config.TextColumn("Instrument"),
-                "Ticker": st.column_config.TextColumn("Ticker"),
-                "Asset class": st.column_config.TextColumn("Asset class"),
-                "Last": st.column_config.NumberColumn("Last", format="%.3f"),
-            },
-        )
+        st.table(trend_styler)
         csv_data = visible.to_csv(index=False).encode("utf-8")
         st.download_button(
             "Download 30-day dataset (CSV)", csv_data,
@@ -886,13 +878,11 @@ if page == "Overview":
     if not etf_markets.empty:
         etf_markets["Instrument"] = etf_markets["Ticker"].map(display_names).fillna(etf_markets["Ticker"])
         etf_markets = compact_observation_times(etf_markets)
-        st.dataframe(
+        st.table(
             style_market_table(
                 etf_markets[["Instrument", "Ticker", "Last", "Daily %", "As of"]],
                 {"Last": "{:,.4f}", "Daily %": "{:+.2f}%"},
-            ),
-            use_container_width=True,
-            hide_index=True,
+            )
         )
 
     st.markdown("<div id='overview-sectors' class='mi-section-band' style='--section-accent:#6ee7b7'><span class='mi-section-icon'>▥</span><div><div class='mi-section-kicker'>Equity breadth</div><h2>Sector performance</h2></div></div>", unsafe_allow_html=True)
@@ -938,7 +928,7 @@ if page == "Overview":
             fig_sector.update_yaxes(showgrid=False, automargin=True, tickfont=dict(color="#F8FAFC", size=10))
             st.plotly_chart(fig_sector, width="stretch", theme=None, config={"displayModeBar": False, "responsive": True})
         sector_table = compact_observation_times(sector_data[["Sector", "Ticker", "Last", "Daily %", "As of"]])
-        st.dataframe(style_market_table(sector_table, {"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}), width="stretch", hide_index=True)
+        st.table(style_market_table(sector_table, {"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}))
 
     # Company-level view: filter a sector, then compare prices and trailing returns.
     st.markdown(
@@ -1026,15 +1016,7 @@ if page == "Overview":
         return_columns = ["Daily %", "1W %", "1M %", "YTD %", "1Y %"]
         for return_column in return_columns:
             company_styler = company_styler.map(color_daily_pct, subset=[return_column])
-        st.dataframe(
-            company_styler,
-            width="stretch",
-            hide_index=True,
-            column_config={
-                "Ticker": st.column_config.TextColumn("Company / ticker"),
-                "Last": st.column_config.NumberColumn("Price", format="%.2f"),
-            },
-        )
+        st.table(company_styler)
 
     st.markdown("<div id='overview-fx' class='mi-section-band' style='--section-accent:#fdba74'><span class='mi-section-icon'>⇄</span><div><div class='mi-section-kicker'>Currency markets</div><h2>FX performance</h2></div></div>", unsafe_allow_html=True)
     fx_data = snap.loc[snap["Ticker"].isin(fx_tickers)].copy()
