@@ -925,79 +925,134 @@ if page == "Overview":
         with metric_cols[3]:
             st.metric("Positive 30D", f"{positive_share:.0f}%" if positive_share is not None else "—", "of available instruments")
 
-        filter_cols = st.columns([1, 1, 1.25])
-        with filter_cols[0]:
-            trend_asset_filter = st.selectbox(
-                "Asset class",
-                ["All asset classes", "ETFs", "Sectors", "Stocks", "FX", "Precious Metals", "Commodities"],
-                key="trend_asset_class_filter",
-            )
-        with filter_cols[1]:
-            trend_signal_filter = st.selectbox(
-                "Trend signal",
-                ["All signals", "Strengthening", "Cooling", "Rebounding", "Weakening", "Unusual activity", "Mixed", "Data unavailable"],
-                key="trend_signal_filter",
-            )
-        with filter_cols[2]:
-            trend_sort = st.selectbox(
-                "Rank by",
-                ["30D %", "5D %", "Acceleration", "Volume ratio", "20D volatility", "Daily %"],
-                key="trend_sort_metric",
+        # Mobile-first filters: keep the default view short and let users open filters only when needed.
+        with st.expander("Filter and rank instruments", expanded=False):
+            search_query = st.text_input(
+                "Search company or ticker",
+                placeholder="e.g. AMD, Crown Castle, MPC",
+                key="trend_search_query",
+            ).strip().lower()
+            filter_cols = st.columns(2)
+            with filter_cols[0]:
+                trend_asset_filter = st.selectbox(
+                    "Asset class",
+                    ["All asset classes", "Stocks", "ETFs", "Sectors", "FX", "Precious Metals", "Commodities"],
+                    key="trend_asset_class_filter",
+                )
+            with filter_cols[1]:
+                industry_options = ["All industries"] + list(SECTOR_ETFS.keys())
+                trend_industry_filter = st.selectbox(
+                    "Industry / sector",
+                    industry_options,
+                    key="trend_industry_filter",
+                )
+            with filter_cols[0]:
+                trend_signal_filter = st.selectbox(
+                    "Trend signal",
+                    ["All signals", "Strengthening", "Cooling", "Rebounding", "Weakening", "Unusual activity", "Mixed", "Data unavailable"],
+                    key="trend_signal_filter",
+                )
+            with filter_cols[1]:
+                trend_sort = st.selectbox(
+                    "Rank by",
+                    ["30D %", "5D %", "Daily %", "Acceleration", "Volume ratio", "20D volatility"],
+                    key="trend_sort_metric",
+                )
+            result_limit = st.selectbox(
+                "Chart size",
+                [5, 10, 15, "All filtered"],
+                index=0,
+                key="trend_chart_size",
+                help="Choose how many ranked instruments appear in the chart.",
             )
 
         filtered_trends = trend_data.copy()
+        if search_query:
+            search_mask = (
+                filtered_trends["Company"].astype(str).str.lower().str.contains(search_query, regex=False)
+                | filtered_trends["Ticker"].astype(str).str.lower().str.contains(search_query, regex=False)
+            )
+            filtered_trends = filtered_trends.loc[search_mask]
         if trend_asset_filter != "All asset classes":
             filtered_trends = filtered_trends.loc[filtered_trends["Asset class"] == trend_asset_filter]
+        if trend_industry_filter != "All industries":
+            filtered_trends = filtered_trends.loc[filtered_trends["Sector"] == trend_industry_filter]
         if trend_signal_filter != "All signals":
             filtered_trends = filtered_trends.loc[filtered_trends["Signal"] == trend_signal_filter]
         filtered_trends = filtered_trends.sort_values(trend_sort, ascending=False, na_position="last")
 
-        chart_rows = filtered_trends.dropna(subset=["30D %"]).sort_values("30D %", ascending=True).tail(10)
+        st.caption(f"Showing {len(filtered_trends)} instruments · ranked by {trend_sort}")
+        chart_rows = filtered_trends.dropna(subset=[trend_sort]).copy()
+        if result_limit != "All filtered":
+            chart_rows = chart_rows.head(int(result_limit))
+        # Reverse rows so the highest-ranked item appears at the top of the horizontal chart.
+        chart_rows = chart_rows.iloc[::-1]
         if not chart_rows.empty:
             chart_labels = [
                 f"{row['Company']} ({row['Ticker']}) · {row['Sector']}"
                 for _, row in chart_rows.iterrows()
             ]
+            metric_values = chart_rows[trend_sort].astype(float)
+            if trend_sort == "Volume ratio":
+                value_labels = [f"{value:.1f}×" for value in metric_values]
+                axis_title = "Volume ratio (× average)"
+                hover_label = "Volume ratio"
+            elif trend_sort == "20D volatility":
+                value_labels = [f"{value:.1f}%" for value in metric_values]
+                axis_title = "20D volatility (%)"
+                hover_label = "20D volatility"
+            elif trend_sort == "Acceleration":
+                value_labels = [f"{value:+.1f} pp" for value in metric_values]
+                axis_title = "Momentum acceleration (pp)"
+                hover_label = "Acceleration"
+            else:
+                value_labels = [f"{value:+.1f}%" for value in metric_values]
+                axis_title = f"{trend_sort} return (%)" if trend_sort in ["Daily %", "5D %", "30D %"] else trend_sort
+                hover_label = trend_sort
+            colors = ["#34d399" if value >= 0 else "#fb7185" for value in metric_values]
             chart = go.Figure(go.Bar(
-                x=chart_rows["30D %"], y=chart_labels, orientation="h",
-                marker_color=["#34d399" if value >= 0 else "#fb7185" for value in chart_rows["30D %"]],
-                text=[f"{value:+.1f}%" for value in chart_rows["30D %"]],
+                x=metric_values, y=chart_labels, orientation="h",
+                marker_color=colors,
+                text=value_labels,
                 textposition="inside", insidetextanchor="end", cliponaxis=True,
                 textfont=dict(color="#0b1120", size=10),
-                hovertemplate="%{y}<br>30D return: %{x:+.2f}%<extra></extra>",
+                hovertemplate=f"%{{y}}<br>{hover_label}: %{{x:.2f}}<extra></extra>",
             ))
-            max_abs = max([abs(float(x)) for x in chart_rows["30D %"]] + [1.0])
+            max_abs = max([abs(float(x)) for x in metric_values] + [1.0])
             chart.update_layout(
-                template="plotly_dark", height=max(300, 25 * len(chart_rows)),
-                margin=dict(l=4, r=8, t=4, b=8), xaxis_title="30D return (%)",
+                template="plotly_dark", height=max(230, 28 * len(chart_rows)),
+                margin=dict(l=4, r=8, t=4, b=8), xaxis_title=axis_title,
                 yaxis_title=None, showlegend=False, paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#e7edf7", size=10), bargap=.22,
             )
             chart.update_xaxes(
-                range=[-max_abs * 1.12, max_abs * 1.12],
+                range=[min(0, float(metric_values.min()) - max_abs * .12), max(0, float(metric_values.max()) + max_abs * .12)],
                 gridcolor="rgba(148,163,184,.14)", zeroline=True, zerolinecolor="#64748b",
                 tickfont=dict(color="#F8FAFC", size=10),
             )
             chart.update_yaxes(showgrid=False, automargin=True, tickfont=dict(color="#F8FAFC", size=10))
             st.plotly_chart(chart, width="stretch", theme=None, config={"displayModeBar": False, "responsive": True})
+        else:
+            st.info("No instruments match these filters. Try a broader industry, asset class or search term.")
 
         visible_cols = [
             "Company", "Ticker", "Sector", "Asset class", "Last", "Daily %", "5D %", "30D %",
             "Acceleration", "Volume ratio", "20D volatility", "Signal", "As of",
         ]
         visible = filtered_trends[visible_cols].copy()
-        trend_styler = style_market_table(visible, {
-            "Last": "{:,.3f}", "Daily %": "{:+.2f}%", "5D %": "{:+.2f}%",
-            "30D %": "{:+.2f}%", "Acceleration": "{:+.2f}", "Volume ratio": "{:.2f}×",
-            "20D volatility": "{:.1f}%",
-        })
-        for return_column in ["Daily %", "5D %", "30D %", "Acceleration"]:
-            trend_styler = trend_styler.map(color_daily_pct, subset=[return_column])
-        st.table(trend_styler)
+        with st.expander(f"Detailed results ({len(visible)} instruments)", expanded=False):
+            trend_styler = style_market_table(visible, {
+                "Last": "{:,.3f}", "Daily %": "{:+.2f}%", "5D %": "{:+.2f}%",
+                "30D %": "{:+.2f}%", "Acceleration": "{:+.2f}", "Volume ratio": "{:.2f}×",
+                "20D volatility": "{:.1f}%",
+            })
+            for return_column in ["Daily %", "5D %", "30D %", "Acceleration"]:
+                trend_styler = trend_styler.map(color_daily_pct, subset=[return_column])
+            st.table(trend_styler)
         csv_data = visible.to_csv(index=False).encode("utf-8")
         st.download_button(
-            "Download 30-day dataset (CSV)", csv_data,
-            file_name="market_trends_30d.csv", mime="text/csv",
+            "Download filtered results (CSV)", csv_data,
+            file_name="market_trends_30d_filtered.csv", mime="text/csv",
             key="download_market_trends_30d",
         )
         st.caption(
