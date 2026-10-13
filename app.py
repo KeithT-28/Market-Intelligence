@@ -1,5 +1,6 @@
 import datetime as dt
 from typing import Dict, List
+from urllib.parse import quote_plus
 
 import pandas as pd
 import plotly.express as px
@@ -62,6 +63,7 @@ COMPANY_DISPLAY_NAMES: Dict[str, str] = {
     "ECL": "Ecolab", "NEM": "Newmont", "FCX": "Freeport-McMoRan",
     "CTVA": "Corteva", "NUE": "Nucor", "VMC": "Vulcan Materials", "MLM": "Martin Marietta",
     "PLD": "Prologis", "AMT": "American Tower", "EQIX": "Equinix", "WELL": "Welltower",
+    "CCI": "Crown Castle", "CBRE": "CBRE Group",
     "SPG": "Simon Property Group", "PSA": "Public Storage", "O": "Realty Income",
     "DLR": "Digital Realty", "AVB": "AvalonBay Communities", "EQR": "Equity Residential",
     "NEE": "NextEra Energy", "SO": "Southern Company", "DUK": "Duke Energy",
@@ -1004,11 +1006,11 @@ if page == "Overview":
             "Yahoo Finance coverage can be incomplete; futures volume and spot FX activity are not directly comparable."
         )
 
-        # Headline context panel: sourced headlines plus cautious theme labels.
+        # Compact mobile-first headline context panel.
         st.markdown("### Why might it be moving?")
         st.caption(
-            "Recent headlines are investigation leads, not proof of causation. Price moves can reflect several factors, "
-            "and this feed may be incomplete or delayed."
+            "Price signals are observations, not explanations. Headlines can provide clues, but do not prove causation; "
+            "Yahoo Finance coverage may be incomplete or delayed."
         )
         candidate_rows = valid_trends.loc[valid_trends["Ticker"].notna()].copy()
         candidate_rows = candidate_rows.loc[candidate_rows["Asset class"].isin(["Stocks", "ETFs", "Sectors", "Precious Metals", "Commodities"])]
@@ -1016,40 +1018,68 @@ if page == "Overview":
         candidate_options = {}
         for _, candidate in candidate_rows.iterrows():
             ticker = str(candidate["Ticker"])
-            label = f"{candidate['Company']} ({ticker}) · {candidate['Sector']}"
+            company_name = COMPANY_DISPLAY_NAMES.get(ticker, str(candidate.get("Company", candidate["Instrument"])))
+            label = f"{company_name} ({ticker}) · {candidate['Sector']}"
             candidate_options[label] = ticker
+
         if candidate_options:
-            news_cols = st.columns([1, 2])
-            with news_cols[0]:
-                selected_news_label = st.selectbox(
-                    "Instrument to investigate", list(candidate_options.keys()), key="why_moving_ticker"
-                )
+            selected_news_label = st.selectbox(
+                "Instrument", list(candidate_options.keys()), key="why_moving_ticker"
+            )
             selected_news_ticker = candidate_options[selected_news_label]
-            with news_cols[1]:
-                selected_news_row = candidate_rows.loc[candidate_rows["Ticker"].astype(str) == selected_news_ticker].iloc[0]
-                daily_text = f"{selected_news_row['Daily %']:+.2f}%" if pd.notna(selected_news_row["Daily %"]) else "n/a"
-                five_text = f"{selected_news_row['5D %']:+.2f}%" if pd.notna(selected_news_row["5D %"]) else "n/a"
-                thirty_text = f"{selected_news_row['30D %']:+.2f}%" if pd.notna(selected_news_row["30D %"]) else "n/a"
-                st.markdown(
-                    f"**Recent price context:** Daily {daily_text} · 5 sessions {five_text} · 30D {thirty_text}  \n\n"
-                    f"**Trend signal:** {selected_news_row['Signal']}"
-                )
+            selected_news_row = candidate_rows.loc[
+                candidate_rows["Ticker"].astype(str) == selected_news_ticker
+            ].iloc[0]
+            daily_value = selected_news_row["Daily %"]
+            five_value = selected_news_row["5D %"]
+            thirty_value = selected_news_row["30D %"]
+            daily_text = f"{daily_value:+.2f}%" if pd.notna(daily_value) else "—"
+            five_text = f"{five_value:+.2f}%" if pd.notna(five_value) else "—"
+            thirty_text = f"{thirty_value:+.2f}%" if pd.notna(thirty_value) else "—"
+
+            metric_cols = st.columns(3, gap="small", wrap=False)
+            metric_cols[0].metric("Daily", daily_text, delta_color="normal", border=True)
+            metric_cols[1].metric("5 sessions", five_text, delta_color="normal", border=True)
+            metric_cols[2].metric("30 days", thirty_text, delta_color="normal", border=True)
+            signal = str(selected_news_row.get("Signal", "Signal unavailable"))
+            as_of = selected_news_row.get("As of")
+            as_of_text = str(as_of) if pd.notna(as_of) else "date unavailable"
+            st.caption(f"**Observed signal:** {signal} · **Data date:** {as_of_text}")
+
             with st.spinner(f"Checking recent headlines for {selected_news_ticker}…"):
                 recent_news = get_recent_news(selected_news_ticker, 5)
+
             if recent_news:
-                for news_item in recent_news:
-                    theme = classify_news_context(news_item["title"])
-                    safe_title = news_item["title"].replace("<", "&lt;").replace(">", "&gt;")
-                    if news_item["url"]:
-                        st.markdown(f"- **[{safe_title}]({news_item['url']})**")
-                    else:
-                        st.markdown(f"- **{safe_title}**")
-                    st.caption(f"Possible theme: {theme} · {news_item['provider']} · {news_item['published']}")
+                with st.container(border=True, gap="small"):
+                    st.markdown("**Recent headlines to investigate**")
+                    for news_item in recent_news:
+                        theme = classify_news_context(news_item["title"])
+                        safe_title = news_item["title"].replace("<", "&lt;").replace(">", "&gt;")
+                        if news_item["url"]:
+                            st.markdown(f"- **[{safe_title}]({news_item['url']})**")
+                        else:
+                            st.markdown(f"- **{safe_title}**")
+                        st.caption(f"Possible theme: {theme} · {news_item['provider']} · {news_item['published']}")
             else:
+                company_name = COMPANY_DISPLAY_NAMES.get(selected_news_ticker, selected_news_ticker)
+                search_query = quote_plus(f'"{company_name}" {selected_news_ticker} stock news')
+                yahoo_url = f"https://finance.yahoo.com/quote/{quote_plus(selected_news_ticker)}/news/"
+                google_news_url = f"https://news.google.com/search?q={search_query}"
                 st.info(
-                    "No recent headlines were returned for this instrument. Try a major stock or ETF, "
-                    "or check a trusted financial news source directly. The price/volume signals above remain available."
+                    "No headlines were returned by the in-app feed. This does not mean there is no news. "
+                    "Use one of the search links below; price and volume signals above remain available."
                 )
+                link_cols = st.columns(2, gap="small")
+                with link_cols[0]:
+                    st.link_button("Search Yahoo Finance news", yahoo_url, use_container_width=True)
+                with link_cols[1]:
+                    st.link_button("Search Google News", google_news_url, use_container_width=True)
+
+            st.caption(
+                "Interpretation tip: compare the company’s move with its sector ETF and the S&P 500. "
+                "If both rise or fall together, the move may reflect broader market or sector factors; "
+                "if the stock diverges, investigate company-specific developments. This is a research framework, not a causal conclusion."
+            )
 
     st.markdown("<div id='overview-etfs' class='mi-section-band' style='--section-accent:#93c5fd'><span class='mi-section-icon'>▦</span><div><div class='mi-section-kicker'>Cross-asset benchmarks</div><h2>Major ETFs</h2></div></div>", unsafe_allow_html=True)
     etf_markets = snap.loc[snap["Ticker"].isin(etf_tickers)].copy()
