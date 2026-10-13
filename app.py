@@ -175,7 +175,7 @@ st.markdown(
     .mi-eyebrow { color:#7dd3fc; font-size:.72rem; font-weight:750; letter-spacing:.13em; text-transform:uppercase; }
     .mi-section-note { color:var(--mi-muted); font-size:.82rem; margin-top:-.4rem; margin-bottom:.65rem; }
     .mi-chip { display:inline-block; padding:.2rem .5rem; border-radius:6px; background:#172944; border:1px solid #294568; color:#93c5fd; font-size:.73rem; }
-    .mi-jump-nav { position:sticky; top:.25rem; z-index:50; display:flex; gap:.45rem; overflow-x:auto; white-space:nowrap; padding:.55rem; margin:.6rem 0 1rem; border:1px solid #26364f; border-radius:12px; background:rgba(17,27,46,.96); backdrop-filter:blur(10px); }
+    .mi-jump-nav { position:sticky; top:.25rem; z-index:50; display:flex; gap:.45rem; overflow-x:auto; white-space:nowrap; padding:.55rem; margin:.6rem 0 1rem; border:1px solid #26364f; border-radius:12px; background:rgba(17,27,46,.98); -webkit-backdrop-filter:none; backdrop-filter:none; }
     .mi-jump-nav a { display:inline-block; text-decoration:none !important; color:#dbeafe !important; background:#172944; border:1px solid #294568; border-radius:8px; padding:.42rem .7rem; font-size:.82rem; font-weight:650; }
     .mi-jump-nav a:active, .mi-jump-nav a:hover { background:#24456d; }
     .mi-section-band { --section-accent:#60a5fa; display:flex; align-items:center; gap:.75rem; padding:.8rem .85rem; margin:1.35rem 0 .7rem; border:1px solid var(--mi-border); border-left:4px solid var(--section-accent); border-radius:11px; background:linear-gradient(100deg, color-mix(in srgb, var(--section-accent) 10%, #111b2e), #111b2e 70%); scroll-margin-top:7rem; }
@@ -187,7 +187,9 @@ st.markdown(
       .mi-section-band { scroll-margin-top: 7.5rem; }
       [data-testid="stMetric"] { padding: 10px 11px; }
       [data-testid="stMetricValue"] { font-size: 1.35rem !important; }
-      [data-testid="stDataFrame"] { font-size: .82rem; }
+      [data-testid="stDataFrame"] { font-size: .82rem; filter:none !important; opacity:1 !important; }
+      [data-testid="stDataFrame"] canvas { image-rendering:auto; }
+      [data-testid="stDataFrame"] [role="grid"] { filter:none !important; opacity:1 !important; }
       .mi-title { font-size: 1.1rem; }
       .mi-mark { width:32px; height:32px; }
     }
