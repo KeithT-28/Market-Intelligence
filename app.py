@@ -1007,6 +1007,154 @@ if page == "Overview":
             axis=1,
         )
 
+    # -----------------------------
+    # Daily market briefing
+    # -----------------------------
+    st.markdown(
+        "<div class='mi-section-band' style='--section-accent:#60a5fa'>"
+        "<span class='mi-section-icon'>◷</span><div><div class='mi-section-kicker'>DAILY RESEARCH</div>"
+        "<h2>Daily Market Briefing</h2></div></div>",
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "A concise read of the latest available market session. Price moves are observations; "
+        "headlines are research leads, not proof of causation."
+    )
+
+    briefing_stock_data = trend_data.loc[trend_data["Asset class"] == "Stocks"].copy() if not trend_data.empty else pd.DataFrame()
+    briefing_sector_data = trend_data.loc[trend_data["Asset class"] == "Sectors"].copy() if not trend_data.empty else pd.DataFrame()
+    if not briefing_stock_data.empty and briefing_stock_data["Daily %"].notna().any():
+        briefing_stocks = briefing_stock_data.dropna(subset=["Daily %"]).sort_values("Daily %", ascending=False)
+        best_stock = briefing_stocks.iloc[0]
+        worst_stock = briefing_stocks.iloc[-1]
+        stock_gainers = briefing_stocks.head(3)
+        stock_losers = briefing_stocks.tail(3).sort_values("Daily %")
+    else:
+        best_stock = worst_stock = None
+        stock_gainers = stock_losers = pd.DataFrame()
+
+    if not briefing_sector_data.empty and briefing_sector_data["Daily %"].notna().any():
+        briefing_sectors = briefing_sector_data.dropna(subset=["Daily %"]).sort_values("Daily %", ascending=False)
+        best_sector = briefing_sectors.iloc[0]
+        worst_sector = briefing_sectors.iloc[-1]
+    else:
+        best_sector = worst_sector = None
+
+    brief_cols = st.columns(3)
+    with brief_cols[0]:
+        if best_stock is not None:
+            st.metric("Top stock · daily", str(best_stock["Ticker"]), f"{best_stock['Daily %']:+.2f}%")
+            st.caption(str(best_stock["Company"]))
+        else:
+            st.metric("Top stock · daily", "—", "Unavailable")
+    with brief_cols[1]:
+        if worst_stock is not None:
+            st.metric("Weakest stock · daily", str(worst_stock["Ticker"]), f"{worst_stock['Daily %']:+.2f}%", delta_color="inverse")
+            st.caption(str(worst_stock["Company"]))
+        else:
+            st.metric("Weakest stock · daily", "—", "Unavailable")
+    with brief_cols[2]:
+        if best_sector is not None:
+            st.metric("Leading sector", str(best_sector["Sector"]), f"{best_sector['Daily %']:+.2f}%")
+            if worst_sector is not None:
+                st.caption(f"Lagging: {worst_sector['Sector']} ({worst_sector['Daily %']:+.2f}%)")
+        else:
+            st.metric("Leading sector", "—", "Unavailable")
+
+    # Cross-asset snapshot uses the same cached price series as the Overview.
+    cross_asset_names = {
+        "^GSPC": "S&P 500", "^NDX": "Nasdaq 100", "DX-Y.NYB": "US Dollar Index",
+        "GC=F": "Gold futures", "CL=F": "WTI crude", "EURUSD=X": "EUR/USD",
+        "JPY=X": "USD/JPY", "^TNX": "US 10Y yield",
+    }
+    cross_asset_rows = []
+    for ticker, label in cross_asset_names.items():
+        item_rows = snap.loc[snap["Ticker"] == ticker] if "snap" in locals() and not snap.empty else pd.DataFrame()
+        if ticker == "^TNX":
+            yield_hist = get_history("^TNX", "5d", "1d")
+            if not yield_hist.empty:
+                yield_hist = yield_hist.sort_values("Date")
+                latest_yield = float(yield_hist["Close"].iloc[-1]) / 10.0
+                yield_move = ((float(yield_hist["Close"].iloc[-1]) - float(yield_hist["Close"].iloc[-2])) * 10.0) if len(yield_hist) > 1 else None
+                cross_asset_rows.append({"Market": label, "Last": f"{latest_yield:.2f}%", "Daily move": f"{yield_move:+.1f} bps" if yield_move is not None else "—"})
+            continue
+        if not item_rows.empty and pd.notna(item_rows.iloc[0]["Last"]):
+            item = item_rows.iloc[0]
+            last_text = f"{item['Last']:,.3f}" if ticker in FX_UNIVERSE.values() else f"{item['Last']:,.2f}"
+            move_text = f"{item['Daily %']:+.2f}%" if pd.notna(item["Daily %"]) else "—"
+            cross_asset_rows.append({"Market": label, "Last": last_text, "Daily move": move_text})
+    if cross_asset_rows:
+        with st.expander("Cross-asset pulse", expanded=False):
+            cross_asset_frame = pd.DataFrame(cross_asset_rows)
+            st.table(cross_asset_frame)
+
+    left_brief, right_brief = st.columns([1, 1])
+    with left_brief:
+        with st.expander("Stock movers", expanded=True):
+            if not stock_gainers.empty:
+                st.markdown("**Top gainers**")
+                for _, item in stock_gainers.iterrows():
+                    st.markdown(f"- **{item['Ticker']}** · {item['Company']} — {item['Daily %']:+.2f}%")
+            if not stock_losers.empty:
+                st.markdown("**Top decliners**")
+                for _, item in stock_losers.iterrows():
+                    st.markdown(f"- **{item['Ticker']}** · {item['Company']} — {item['Daily %']:+.2f}%")
+            if stock_gainers.empty and stock_losers.empty:
+                st.info("Stock movers are temporarily unavailable.")
+    with right_brief:
+        with st.expander("Headlines to investigate", expanded=False):
+            news_tickers = []
+            if best_stock is not None:
+                news_tickers.append((str(best_stock["Ticker"]), str(best_stock["Company"]), float(best_stock["Daily %"])))
+            if worst_stock is not None and (best_stock is None or str(worst_stock["Ticker"]) != str(best_stock["Ticker"])):
+                news_tickers.append((str(worst_stock["Ticker"]), str(worst_stock["Company"]), float(worst_stock["Daily %"])))
+            found_news = False
+            for news_ticker, company_name, move in news_tickers:
+                headlines = get_recent_news(news_ticker, limit=2)
+                if headlines:
+                    found_news = True
+                    st.markdown(f"**{company_name} ({news_ticker}) · {move:+.2f}% daily**")
+                    for headline in headlines:
+                        title_text = html.escape(str(headline["title"]))
+                        url = headline.get("url")
+                        if url:
+                            st.markdown(f"- [{title_text}]({url}) · {html.escape(str(headline.get('provider', 'News')))}")
+                        else:
+                            st.markdown(f"- {title_text} · {html.escape(str(headline.get('provider', 'News')))}")
+            if not found_news:
+                st.info("No recent headlines were returned for the biggest movers. This does not mean there is no news; use the official company site or a trusted news search.")
+                if best_stock is not None:
+                    st.markdown(f"[Search news for {best_stock['Ticker']}]({ 'https://news.google.com/search?q=' + quote_plus(str(best_stock['Ticker']) + ' stock news') })")
+
+    st.markdown("**What to watch next**")
+    st.caption("Starter schedule based on official calendars; dates can change. Confirm with the source before relying on a release time.")
+    upcoming_events = [
+        ("US CPI · September 2026", "2026-10-14", "https://www.bls.gov/schedule/news_release/cpi.htm", "BLS CPI calendar"),
+        ("FOMC decision", "2026-10-28", "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm", "Federal Reserve"),
+        ("US GDP · Q3 advance estimate", "2026-10-29", "https://www.bea.gov/news/schedule", "BEA release schedule"),
+        ("US Employment Situation · October", "2026-11-06", "https://www.bls.gov/schedule/news_release/empSit.htm", "BLS jobs calendar"),
+        ("US CPI · October 2026", "2026-11-10", "https://www.bls.gov/schedule/news_release/cpi.htm", "BLS CPI calendar"),
+        ("FOMC decision", "2026-12-09", "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm", "Federal Reserve"),
+        ("US Employment Situation · November", "2026-12-04", "https://www.bls.gov/schedule/news_release/empSit.htm", "BLS jobs calendar"),
+        ("US CPI · November 2026", "2026-12-10", "https://www.bls.gov/schedule/news_release/cpi.htm", "BLS CPI calendar"),
+    ]
+    today_for_events = dt.date.today()
+    future_events = sorted(
+        [(dt.date.fromisoformat(date_text), label, url, source) for label, date_text, url, source in upcoming_events if dt.date.fromisoformat(date_text) >= today_for_events],
+        key=lambda event: event[0],
+    )[:4]
+    if future_events:
+        for event_date, event_label, event_url, event_source in future_events:
+            st.markdown(f"- **{event_date:%d %b}** · [{event_label}]({event_url}) · {event_source}")
+    else:
+        st.markdown(
+            "- [BLS CPI calendar](https://www.bls.gov/schedule/news_release/cpi.htm) · "
+            "[BLS employment calendar](https://www.bls.gov/schedule/news_release/empSit.htm) · "
+            "[Federal Reserve FOMC calendar](https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm) · "
+            "[BEA release schedule](https://www.bea.gov/news/schedule)"
+        )
+    st.caption("Observed moves are shown separately from possible explanations. A headline appearing near a move does not establish that it caused the move. Data is sourced from Yahoo Finance and may be delayed or incomplete.")
+
     if trend_data.empty or trend_data["30D %"].notna().sum() == 0:
         st.warning("The 30-day dataset is temporarily unavailable. Please try refreshing market data.")
     else:
