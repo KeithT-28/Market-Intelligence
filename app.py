@@ -163,6 +163,21 @@ def get_snapshot(tickers: tuple) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def color_daily_pct(value):
+    """Color daily percentage changes green for gains and red for losses."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return ""
+    if pd.isna(number):
+        return ""
+    if number > 0:
+        return "color: #16803c; font-weight: 600;"
+    if number < 0:
+        return "color: #dc2626; font-weight: 600;"
+    return "color: #6b7280;"
+
+
 def format_price(value, ticker: str) -> str:
     if pd.isna(value):
         return "—"
@@ -385,7 +400,7 @@ if page == "Overview":
         st.dataframe(
             etf_markets[["Instrument", "Ticker", "Last", "Daily %", "As of"]].style.format(
                 {"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}, na_rep="—"
-            ),
+            ).applymap(color_daily_pct, subset=["Daily %"]),
             use_container_width=True,
             hide_index=True,
         )
@@ -397,7 +412,7 @@ if page == "Overview":
     if not sector_data.empty:
         sector_data["Sector"] = sector_data["Ticker"].map(name_by_ticker)
         sector_data = sector_data.sort_values("Daily %", ascending=False, na_position="last")
-        st.dataframe(sector_data[["Sector", "Ticker", "Last", "Daily %", "As of"]].style.format({"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}, na_rep="—"), use_container_width=True, hide_index=True)
+        st.dataframe(sector_data[["Sector", "Ticker", "Last", "Daily %", "As of"]].style.format({"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}, na_rep="—").applymap(color_daily_pct, subset=["Daily %"]), use_container_width=True, hide_index=True)
 
     st.markdown("### FX performance")
     fx_data = snap.loc[snap["Ticker"].isin(fx_tickers)].copy()
@@ -406,7 +421,7 @@ if page == "Overview":
         st.dataframe(
             fx_data[["Pair", "Ticker", "Last", "Daily %", "As of"]].style.format(
                 {"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}, na_rep="—"
-            ),
+            ).applymap(color_daily_pct, subset=["Daily %"]),
             use_container_width=True,
             hide_index=True,
         )
@@ -457,7 +472,7 @@ elif page == "Sector Monitor":
         company_tickers = SECTOR_COMPANIES[sector]
         company_snap = get_snapshot(tuple(company_tickers))
         company_snap = company_snap.sort_values("Daily %", ascending=False, na_position="last")
-        st.dataframe(company_snap.style.format({"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}, na_rep="—"), use_container_width=True, hide_index=True)
+        st.dataframe(company_snap.style.format({"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}, na_rep="—").applymap(color_daily_pct, subset=["Daily %"]), use_container_width=True, hide_index=True)
         selected_company = st.selectbox("Open company chart", company_tickers)
         render_instrument(selected_company, period_label)
 
@@ -471,7 +486,7 @@ elif page == "G10 FX":
     fx_snap = get_snapshot(tuple(dict.fromkeys(FX_UNIVERSE.values())))
     fx_names = {v: k for k, v in FX_UNIVERSE.items()}
     fx_snap["Pair"] = fx_snap["Ticker"].map(fx_names)
-    st.dataframe(fx_snap[["Pair", "Ticker", "Last", "Daily %", "As of"]].style.format({"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}, na_rep="—"), use_container_width=True, hide_index=True)
+    st.dataframe(fx_snap[["Pair", "Ticker", "Last", "Daily %", "As of"]].style.format({"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}, na_rep="—").applymap(color_daily_pct, subset=["Daily %"]), use_container_width=True, hide_index=True)
 
 else:
     st.markdown("### Instrument Explorer")
