@@ -400,7 +400,7 @@ if page == "Overview":
         st.dataframe(
             etf_markets[["Instrument", "Ticker", "Last", "Daily %", "As of"]].style.format(
                 {"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}, na_rep="—"
-            ).applymap(color_daily_pct, subset=["Daily %"]),
+            ).map(color_daily_pct, subset=["Daily %"]),
             use_container_width=True,
             hide_index=True,
         )
@@ -412,7 +412,7 @@ if page == "Overview":
     if not sector_data.empty:
         sector_data["Sector"] = sector_data["Ticker"].map(name_by_ticker)
         sector_data = sector_data.sort_values("Daily %", ascending=False, na_position="last")
-        st.dataframe(sector_data[["Sector", "Ticker", "Last", "Daily %", "As of"]].style.format({"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}, na_rep="—").applymap(color_daily_pct, subset=["Daily %"]), use_container_width=True, hide_index=True)
+        st.dataframe(sector_data[["Sector", "Ticker", "Last", "Daily %", "As of"]].style.format({"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}, na_rep="—").map(color_daily_pct, subset=["Daily %"]), use_container_width=True, hide_index=True)
 
     st.markdown("### FX performance")
     fx_data = snap.loc[snap["Ticker"].isin(fx_tickers)].copy()
@@ -421,7 +421,7 @@ if page == "Overview":
         st.dataframe(
             fx_data[["Pair", "Ticker", "Last", "Daily %", "As of"]].style.format(
                 {"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}, na_rep="—"
-            ).applymap(color_daily_pct, subset=["Daily %"]),
+            ).map(color_daily_pct, subset=["Daily %"]),
             use_container_width=True,
             hide_index=True,
         )
@@ -472,7 +472,7 @@ elif page == "Sector Monitor":
         company_tickers = SECTOR_COMPANIES[sector]
         company_snap = get_snapshot(tuple(company_tickers))
         company_snap = company_snap.sort_values("Daily %", ascending=False, na_position="last")
-        st.dataframe(company_snap.style.format({"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}, na_rep="—").applymap(color_daily_pct, subset=["Daily %"]), use_container_width=True, hide_index=True)
+        st.dataframe(company_snap.style.format({"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}, na_rep="—").map(color_daily_pct, subset=["Daily %"]), use_container_width=True, hide_index=True)
         selected_company = st.selectbox("Open company chart", company_tickers)
         render_instrument(selected_company, period_label)
 
@@ -486,7 +486,7 @@ elif page == "G10 FX":
     fx_snap = get_snapshot(tuple(dict.fromkeys(FX_UNIVERSE.values())))
     fx_names = {v: k for k, v in FX_UNIVERSE.items()}
     fx_snap["Pair"] = fx_snap["Ticker"].map(fx_names)
-    st.dataframe(fx_snap[["Pair", "Ticker", "Last", "Daily %", "As of"]].style.format({"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}, na_rep="—").applymap(color_daily_pct, subset=["Daily %"]), use_container_width=True, hide_index=True)
+    st.dataframe(fx_snap[["Pair", "Ticker", "Last", "Daily %", "As of"]].style.format({"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}, na_rep="—").map(color_daily_pct, subset=["Daily %"]), use_container_width=True, hide_index=True)
 
 else:
     st.markdown("### Instrument Explorer")
