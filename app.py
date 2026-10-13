@@ -330,13 +330,14 @@ def render_price_chart(data: pd.DataFrame, ticker: str, interval_label: str):
     ))
     fig.update_layout(
         template="plotly_dark",
+        paper_bgcolor="#0B1120", plot_bgcolor="#0B1120",
         height=390, margin=dict(l=8, r=8, t=22, b=8),
         xaxis_title=None, yaxis_title="Price",
         hovermode="x unified", showlegend=False,
     )
     fig.update_xaxes(showgrid=False)
     fig.update_yaxes(gridcolor="rgba(128,128,128,0.15)")
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, width="stretch", theme=None)
     st.caption(f"Chart interval: {interval_label}. Historical data and quote timing depend on Yahoo Finance coverage; not an exchange-licensed real-time feed.")
 
 
@@ -410,12 +411,13 @@ def render_explorer_view(ticker: str, period_label: str, name: str = ""):
         ))
         fig.update_layout(
             template="plotly_dark",
+            paper_bgcolor="#0B1120", plot_bgcolor="#0B1120",
             height=310, margin=dict(l=8, r=8, t=8, b=8),
             xaxis_title=None, yaxis_title=None, showlegend=False, hovermode="x unified",
         )
         fig.update_xaxes(showgrid=False, showline=False, ticks="")
         fig.update_yaxes(showgrid=True, gridcolor="rgba(128,128,128,0.18)", zeroline=False)
-        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False, "responsive": True})
+        st.plotly_chart(fig, width="stretch", theme=None, config={"displayModeBar": False, "responsive": True})
         st.caption("Illustrative layout · actual chart uses retrieved market history. Data may be delayed and is not guaranteed real-time.")
 
     show_returns = st.checkbox("Show return calculations table", value=True, key=f"show_returns_{ticker}")
@@ -579,7 +581,7 @@ if page == "Overview":
                 tickfont=dict(size=10),
             )
             fig_sector.update_yaxes(showgrid=False, automargin=True, tickfont=dict(size=10))
-            st.plotly_chart(fig_sector, width="stretch", config={"displayModeBar": False, "responsive": True})
+            st.plotly_chart(fig_sector, width="stretch", theme=None, config={"displayModeBar": False, "responsive": True})
         sector_table = compact_observation_times(sector_data[["Sector", "Ticker", "Last", "Daily %", "As of"]])
         st.dataframe(style_market_table(sector_table, {"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}), width="stretch", hide_index=True)
 
@@ -605,7 +607,7 @@ if page == "Overview":
             )
             fig_fx.update_xaxes(gridcolor="rgba(148,163,184,.14)", zeroline=True, zerolinecolor="#64748b", tickfont=dict(size=10))
             fig_fx.update_yaxes(showgrid=False, automargin=True, tickfont=dict(size=10))
-            st.plotly_chart(fig_fx, width="stretch", config={"displayModeBar": False, "responsive": True})
+            st.plotly_chart(fig_fx, width="stretch", theme=None, config={"displayModeBar": False, "responsive": True})
         fx_table = compact_observation_times(fx_data[["Pair", "Ticker", "Last", "Daily %", "As of"]])
         st.dataframe(
             style_market_table(fx_table, {"Last": "{:,.4f}", "Daily %": "{:+.2f}%"}),
