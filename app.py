@@ -330,14 +330,25 @@ def render_price_chart(data: pd.DataFrame, ticker: str, interval_label: str):
     ))
     fig.update_layout(
         template="plotly_dark",
-        paper_bgcolor="#0B1120", plot_bgcolor="#0B1120",
-        height=390, margin=dict(l=8, r=8, t=22, b=8),
+        # Explicitly set both chart backgrounds: Streamlit's default Plotly theme
+        # can otherwise render this chart with a white canvas on a dark page.
+        paper_bgcolor="#0B1220",
+        plot_bgcolor="#0B1220",
+        font=dict(color="#F8FAFC", size=12),
+        hoverlabel=dict(bgcolor="#172033", bordercolor="#475569", font=dict(color="#FFFFFF", size=12)),
+        height=340, margin=dict(l=42, r=12, t=12, b=36),
         xaxis_title=None, yaxis_title="Price",
         hovermode="x unified", showlegend=False,
     )
-    fig.update_xaxes(showgrid=False)
-    fig.update_yaxes(gridcolor="rgba(128,128,128,0.15)")
-    st.plotly_chart(fig, width="stretch", theme=None)
+    fig.update_xaxes(
+        showgrid=False, color="#F8FAFC", linecolor="#475569",
+        tickfont=dict(color="#F8FAFC", size=11), ticks="outside", tickcolor="#64748B",
+    )
+    fig.update_yaxes(
+        gridcolor="rgba(148,163,184,0.20)", color="#F8FAFC",
+        zeroline=False, tickfont=dict(color="#F8FAFC", size=11), ticks="outside", tickcolor="#64748B",
+    )
+    st.plotly_chart(fig, width="stretch", theme=None, config={"responsive": True, "displayModeBar": False})
     st.caption(f"Chart interval: {interval_label}. Historical data and quote timing depend on Yahoo Finance coverage; not an exchange-licensed real-time feed.")
 
 
@@ -411,12 +422,16 @@ def render_explorer_view(ticker: str, period_label: str, name: str = ""):
         ))
         fig.update_layout(
             template="plotly_dark",
-            paper_bgcolor="#0B1120", plot_bgcolor="#0B1120",
-            height=310, margin=dict(l=8, r=8, t=8, b=8),
+            paper_bgcolor="#111C2E", plot_bgcolor="#111C2E",
+            font=dict(color="#F8FAFC", size=12),
+            hoverlabel=dict(bgcolor="#172033", bordercolor="#475569", font=dict(color="#FFFFFF", size=12)),
+            height=300, margin=dict(l=10, r=10, t=8, b=24),
             xaxis_title=None, yaxis_title=None, showlegend=False, hovermode="x unified",
         )
-        fig.update_xaxes(showgrid=False, showline=False, ticks="")
-        fig.update_yaxes(showgrid=True, gridcolor="rgba(128,128,128,0.18)", zeroline=False)
+        fig.update_xaxes(showgrid=False, showline=False, color="#F8FAFC",
+                         tickfont=dict(color="#F8FAFC", size=11), ticks="outside", tickcolor="#64748B")
+        fig.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,0.20)", zeroline=False,
+                         color="#F8FAFC", tickfont=dict(color="#F8FAFC", size=11), ticks="outside", tickcolor="#64748B")
         st.plotly_chart(fig, width="stretch", theme=None, config={"displayModeBar": False, "responsive": True})
         st.caption("Illustrative layout · actual chart uses retrieved market history. Data may be delayed and is not guaranteed real-time.")
 
@@ -578,9 +593,9 @@ if page == "Overview":
             fig_sector.update_xaxes(
                 range=[-max_abs * 1.12, max_abs * 1.12],
                 gridcolor="rgba(148,163,184,.14)", zeroline=True, zerolinecolor="#64748b",
-                tickfont=dict(size=10),
+                tickfont=dict(color="#F8FAFC", size=10),
             )
-            fig_sector.update_yaxes(showgrid=False, automargin=True, tickfont=dict(size=10))
+            fig_sector.update_yaxes(showgrid=False, automargin=True, tickfont=dict(color="#F8FAFC", size=10))
             st.plotly_chart(fig_sector, width="stretch", theme=None, config={"displayModeBar": False, "responsive": True})
         sector_table = compact_observation_times(sector_data[["Sector", "Ticker", "Last", "Daily %", "As of"]])
         st.dataframe(style_market_table(sector_table, {"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}), width="stretch", hide_index=True)
@@ -605,8 +620,8 @@ if page == "Overview":
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                 font=dict(color="#cbd5e1", size=10), bargap=0.24,
             )
-            fig_fx.update_xaxes(gridcolor="rgba(148,163,184,.14)", zeroline=True, zerolinecolor="#64748b", tickfont=dict(size=10))
-            fig_fx.update_yaxes(showgrid=False, automargin=True, tickfont=dict(size=10))
+            fig_fx.update_xaxes(gridcolor="rgba(148,163,184,.20)", zeroline=True, zerolinecolor="#94A3B8", tickfont=dict(color="#F8FAFC", size=10))
+            fig_fx.update_yaxes(showgrid=False, automargin=True, tickfont=dict(color="#F8FAFC", size=10))
             st.plotly_chart(fig_fx, width="stretch", theme=None, config={"displayModeBar": False, "responsive": True})
         fx_table = compact_observation_times(fx_data[["Pair", "Ticker", "Last", "Daily %", "As of"]])
         st.dataframe(
