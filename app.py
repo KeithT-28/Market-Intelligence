@@ -242,6 +242,111 @@ def get_return_history(ticker: str) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=900, show_spinner=False)
+def get_30d_trend_data(instrument_specs: tuple) -> pd.DataFrame:
+    """Fetch daily history in batches and calculate rolling trend/activity indicators."""
+    if not instrument_specs:
+        return pd.DataFrame()
+
+    ticker_to_spec = {ticker: (display_name, ticker, asset_class)
+                      for display_name, ticker, asset_class in instrument_specs}
+    tickers = list(ticker_to_spec.keys())
+    histories = {}
+
+    # Batch requests to reduce latency and provider load.
+    for start in range(0, len(tickers), 25):
+        chunk = tickers[start:start + 25]
+        try:
+            raw = yf.download(
+                tickers=chunk, period="3mo", interval="1d", auto_adjust=True,
+                progress=False, threads=True, group_by="ticker", multi_level_index=True,
+            )
+            if raw is None or raw.empty:
+                continue
+            for ticker in chunk:
+                try:
+                    if isinstance(raw.columns, pd.MultiIndex):
+                        if ticker in raw.columns.get_level_values(0):
+                            one = raw[ticker].copy()
+                        elif ticker in raw.columns.get_level_values(1):
+                            one = raw.xs(ticker, axis=1, level=1).copy()
+                        else:
+                            continue
+                    else:
+                        if len(chunk) != 1:
+                            continue
+                        one = raw.copy()
+                    one.columns = [str(c[0] if isinstance(c, tuple) else c).title() for c in one.columns]
+                    if "Close" not in one.columns:
+                        continue
+                    one = one[[c for c in ["Close", "Volume"] if c in one.columns]].copy()
+                    one = one.dropna(subset=["Close"]).sort_index()
+                    if not one.empty:
+                        histories[ticker] = one
+                except Exception:
+                    continue
+        except Exception:
+            continue
+
+    rows = []
+    for ticker, (display_name, _, asset_class) in ticker_to_spec.items():
+        hist = histories.get(ticker)
+        if hist is None or hist.empty:
+            rows.append({
+                "Instrument": display_name, "Ticker": ticker, "Asset class": asset_class,
+                "Last": None, "Daily %": None, "5D %": None, "30D %": None,
+                "Acceleration": None, "Volume ratio": None, "20D volatility": None,
+                "Signal": "Data unavailable", "As of": "Unavailable",
+            })
+            continue
+
+        close = pd.to_numeric(hist["Close"], errors="coerce").dropna()
+        if close.empty:
+            continue
+        latest = float(close.iloc[-1])
+        daily = (latest / float(close.iloc[-2]) - 1) * 100 if len(close) >= 2 and close.iloc[-2] else None
+        five_day = (latest / float(close.iloc[-6]) - 1) * 100 if len(close) >= 6 and close.iloc[-6] else None
+        thirty_day = (latest / float(close.iloc[-22]) - 1) * 100 if len(close) >= 22 and close.iloc[-22] else None
+        acceleration = (five_day - thirty_day / 6.0) if five_day is not None and thirty_day is not None else None
+
+        volume_ratio = None
+        if "Volume" in hist.columns:
+            volume = pd.to_numeric(hist["Volume"], errors="coerce").dropna()
+            # Compare latest 5 sessions with the preceding 20 sessions.
+            if len(volume) >= 25:
+                recent_vol = float(volume.iloc[-5:].mean())
+                baseline_vol = float(volume.iloc[-25:-5].mean())
+                if baseline_vol > 0:
+                    volume_ratio = recent_vol / baseline_vol
+
+        daily_returns = close.pct_change().dropna()
+        volatility = float(daily_returns.iloc[-20:].std() * (252 ** 0.5) * 100) if len(daily_returns) >= 20 else None
+
+        if thirty_day is not None and five_day is not None and thirty_day > 0 and five_day > 0 and acceleration is not None and acceleration > 0:
+            signal = "Strengthening"
+        elif thirty_day is not None and thirty_day > 0 and five_day is not None and five_day < 0:
+            signal = "Cooling"
+        elif thirty_day is not None and thirty_day < 0 and five_day is not None and five_day > 0:
+            signal = "Rebounding"
+        elif thirty_day is not None and thirty_day < 0 and five_day is not None and five_day < 0:
+            signal = "Weakening"
+        else:
+            signal = "Mixed"
+
+        # Spot FX turnover is decentralised; do not treat Yahoo FX volume as global activity.
+        if asset_class in ("Stocks", "ETFs", "Sectors") and volume_ratio is not None and volume_ratio >= 1.5:
+            signal = "Unusual activity"
+
+        rows.append({
+            "Instrument": display_name, "Ticker": ticker, "Asset class": asset_class,
+            "Last": latest, "Daily %": daily, "5D %": five_day, "30D %": thirty_day,
+            "Acceleration": acceleration, "Volume ratio": volume_ratio,
+            "20D volatility": volatility, "Signal": signal,
+            "As of": pd.Timestamp(close.index[-1]).strftime("%Y-%m-%d"),
+        })
+    return pd.DataFrame(rows)
+
+
+@st.cache_data(ttl=900, show_spinner=False)
 def get_snapshot(tickers: tuple) -> pd.DataFrame:
     """Build a simple latest-price snapshot for a set of tickers."""
     rows = []
@@ -603,6 +708,7 @@ if page == "Overview":
     # Compact jump navigation makes the long Overview easier to scan on mobile.
     st.markdown(
         "<nav class='mi-jump-nav' aria-label='Market sections'>"
+        "<a href='#overview-trends'>↗ 30D Trends</a>"
         "<a href='#overview-etfs'>▦ ETFs</a>"
         "<a href='#overview-sectors'>▥ Sectors</a>"
         "<a href='#overview-fx'>⇄ FX</a>"
@@ -615,6 +721,158 @@ if page == "Overview":
     # Each asset class has its own visual section, accent colour and anchor.
     fx_tickers = tuple(dict.fromkeys(FX_UNIVERSE.values()))
     etf_tickers = ("SPY", "QQQ", "IWM", "TLT", "GLD")
+
+    # -----------------------------
+    # Rolling 30-day market trends
+    # -----------------------------
+    st.markdown(
+        "<div id='overview-trends' class='mi-section-band' style='--section-accent:#fbbf24'>"
+        "<span class='mi-section-icon'>↗</span><div><div class='mi-section-kicker'>Market intelligence</div>"
+        "<h2>30-Day Market Trends</h2></div></div>",
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Find leaders, emerging momentum and unusual activity across the dashboard watchlist. "
+        "30D uses approximately 21 trading sessions. Volume signals are only interpreted for stocks, ETFs and sector funds."
+    )
+
+    trend_specs = []
+    seen_trend_tickers = set()
+
+    def add_trend_spec(display_name, ticker, asset_class):
+        if ticker not in seen_trend_tickers:
+            trend_specs.append((display_name, ticker, asset_class))
+            seen_trend_tickers.add(ticker)
+
+    for label, ticker in ETF_UNIVERSE.items():
+        add_trend_spec(label, ticker, "ETFs")
+    for sector_name, ticker in SECTOR_ETFS.items():
+        add_trend_spec(sector_name, ticker, "Sectors")
+    for pair_name, ticker in FX_UNIVERSE.items():
+        add_trend_spec(pair_name, ticker, "FX")
+    for instrument_name, ticker in COMMODITY_UNIVERSE.items():
+        asset_class = "Precious Metals" if instrument_name in PRECIOUS_METALS else "Commodities"
+        add_trend_spec(instrument_name, ticker, asset_class)
+    for sector_name, company_list in SECTOR_COMPANIES.items():
+        for company_ticker in company_list:
+            add_trend_spec(company_ticker, company_ticker, "Stocks")
+
+    with st.spinner("Building the rolling 30-day market dataset…"):
+        trend_data = get_30d_trend_data(tuple(trend_specs))
+
+    if trend_data.empty or trend_data["30D %"].notna().sum() == 0:
+        st.warning("The 30-day dataset is temporarily unavailable. Please try refreshing market data.")
+    else:
+        metric_cols = st.columns(4)
+        valid_trends = trend_data.dropna(subset=["30D %"]).copy()
+        leaders = valid_trends.sort_values("30D %", ascending=False).head(1)
+        emerging = valid_trends.dropna(subset=["Acceleration"]).sort_values("Acceleration", ascending=False).head(1)
+        activity = valid_trends.dropna(subset=["Volume ratio"])
+        activity = activity.loc[activity["Volume ratio"] >= 1.5].sort_values("Volume ratio", ascending=False)
+        positive_share = (valid_trends["30D %"] > 0).mean() * 100 if not valid_trends.empty else None
+
+        with metric_cols[0]:
+            if not leaders.empty:
+                st.metric("30D leader", leaders.iloc[0]["Instrument"], f"{leaders.iloc[0]['30D %']:+.2f}%")
+            else:
+                st.metric("30D leader", "—")
+        with metric_cols[1]:
+            if not emerging.empty:
+                st.metric("Momentum improving", emerging.iloc[0]["Instrument"], f"{emerging.iloc[0]['Acceleration']:+.2f} pp")
+            else:
+                st.metric("Momentum improving", "—")
+        with metric_cols[2]:
+            if not activity.empty:
+                st.metric("Unusual volume", activity.iloc[0]["Ticker"], f"{activity.iloc[0]['Volume ratio']:.1f}× average")
+            else:
+                st.metric("Unusual volume", "None flagged")
+        with metric_cols[3]:
+            st.metric("Positive 30D", f"{positive_share:.0f}%" if positive_share is not None else "—", "of available instruments")
+
+        filter_cols = st.columns([1, 1, 1.25])
+        with filter_cols[0]:
+            trend_asset_filter = st.selectbox(
+                "Asset class",
+                ["All asset classes", "ETFs", "Sectors", "Stocks", "FX", "Precious Metals", "Commodities"],
+                key="trend_asset_class_filter",
+            )
+        with filter_cols[1]:
+            trend_signal_filter = st.selectbox(
+                "Trend signal",
+                ["All signals", "Strengthening", "Cooling", "Rebounding", "Weakening", "Unusual activity", "Mixed", "Data unavailable"],
+                key="trend_signal_filter",
+            )
+        with filter_cols[2]:
+            trend_sort = st.selectbox(
+                "Rank by",
+                ["30D %", "5D %", "Acceleration", "Volume ratio", "20D volatility", "Daily %"],
+                key="trend_sort_metric",
+            )
+
+        filtered_trends = trend_data.copy()
+        if trend_asset_filter != "All asset classes":
+            filtered_trends = filtered_trends.loc[filtered_trends["Asset class"] == trend_asset_filter]
+        if trend_signal_filter != "All signals":
+            filtered_trends = filtered_trends.loc[filtered_trends["Signal"] == trend_signal_filter]
+        filtered_trends = filtered_trends.sort_values(trend_sort, ascending=False, na_position="last")
+
+        chart_rows = filtered_trends.dropna(subset=["30D %"]).sort_values("30D %", ascending=True).tail(10)
+        if not chart_rows.empty:
+            chart = go.Figure(go.Bar(
+                x=chart_rows["30D %"], y=chart_rows["Instrument"], orientation="h",
+                marker_color=["#34d399" if value >= 0 else "#fb7185" for value in chart_rows["30D %"]],
+                text=[f"{value:+.1f}%" for value in chart_rows["30D %"]],
+                textposition="inside", insidetextanchor="end", cliponaxis=True,
+                textfont=dict(color="#0b1120", size=10),
+                hovertemplate="%{y}<br>30D return: %{x:+.2f}%<extra></extra>",
+            ))
+            max_abs = max([abs(float(x)) for x in chart_rows["30D %"]] + [1.0])
+            chart.update_layout(
+                template="plotly_dark", height=max(300, 25 * len(chart_rows)),
+                margin=dict(l=4, r=8, t=4, b=8), xaxis_title="30D return (%)",
+                yaxis_title=None, showlegend=False, paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#e7edf7", size=10), bargap=.22,
+            )
+            chart.update_xaxes(
+                range=[-max_abs * 1.12, max_abs * 1.12],
+                gridcolor="rgba(148,163,184,.14)", zeroline=True, zerolinecolor="#64748b",
+                tickfont=dict(color="#F8FAFC", size=10),
+            )
+            chart.update_yaxes(showgrid=False, automargin=True, tickfont=dict(color="#F8FAFC", size=10))
+            st.plotly_chart(chart, width="stretch", theme=None, config={"displayModeBar": False, "responsive": True})
+
+        visible_cols = [
+            "Instrument", "Ticker", "Asset class", "Last", "Daily %", "5D %", "30D %",
+            "Acceleration", "Volume ratio", "20D volatility", "Signal", "As of",
+        ]
+        visible = filtered_trends[visible_cols].copy()
+        trend_styler = style_market_table(visible, {
+            "Last": "{:,.3f}", "Daily %": "{:+.2f}%", "5D %": "{:+.2f}%",
+            "30D %": "{:+.2f}%", "Acceleration": "{:+.2f}", "Volume ratio": "{:.2f}×",
+            "20D volatility": "{:.1f}%",
+        })
+        for return_column in ["Daily %", "5D %", "30D %", "Acceleration"]:
+            trend_styler = trend_styler.map(color_daily_pct, subset=[return_column])
+        st.dataframe(
+            trend_styler, width="stretch", hide_index=True,
+            column_config={
+                "Instrument": st.column_config.TextColumn("Instrument"),
+                "Ticker": st.column_config.TextColumn("Ticker"),
+                "Asset class": st.column_config.TextColumn("Asset class"),
+                "Last": st.column_config.NumberColumn("Last", format="%.3f"),
+            },
+        )
+        csv_data = visible.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "Download 30-day dataset (CSV)", csv_data,
+            file_name="market_trends_30d.csv", mime="text/csv",
+            key="download_market_trends_30d",
+        )
+        st.caption(
+            "Acceleration = 5D return minus one-sixth of the 30D return. "
+            "Volume ratio compares the latest five-session average with the preceding 20-session average. "
+            "Yahoo Finance coverage can be incomplete; futures volume and spot FX activity are not directly comparable."
+        )
 
     st.markdown("<div id='overview-etfs' class='mi-section-band' style='--section-accent:#93c5fd'><span class='mi-section-icon'>▦</span><div><div class='mi-section-kicker'>Cross-asset benchmarks</div><h2>Major ETFs</h2></div></div>", unsafe_allow_html=True)
     etf_markets = snap.loc[snap["Ticker"].isin(etf_tickers)].copy()
