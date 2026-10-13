@@ -666,6 +666,102 @@ if page == "Overview":
         sector_table = compact_observation_times(sector_data[["Sector", "Ticker", "Last", "Daily %", "As of"]])
         st.dataframe(style_market_table(sector_table, {"Last": "{:,.2f}", "Daily %": "{:+.2f}%"}), width="stretch", hide_index=True)
 
+    # Company-level view: filter a sector, then compare prices and trailing returns.
+    st.markdown(
+        "<div id='overview-companies' class='mi-section-band' style='--section-accent:#c4b5fd'>"
+        "<span class='mi-section-icon'>▤</span><div><div class='mi-section-kicker'>Company performance</div>"
+        "<h2>Sector constituents — top 10 watchlist</h2></div></div>",
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Ten representative large-cap constituents per sector, ordered by the selected return metric. "
+        "This is a curated watchlist, not a live market-cap ranking. Prices and returns use Yahoo Finance adjusted daily closes."
+    )
+    company_filter_col, sort_filter_col = st.columns([1.3, 1])
+    with company_filter_col:
+        overview_company_sector = st.selectbox(
+            "Filter by sector",
+            list(SECTOR_COMPANIES.keys()),
+            key="overview_company_sector_filter",
+        )
+    with sort_filter_col:
+        company_sort_metric = st.selectbox(
+            "Rank companies by",
+            ["Daily %", "1W %", "1M %", "YTD %", "1Y %"],
+            key="overview_company_sort_metric",
+        )
+
+    company_tickers = tuple(SECTOR_COMPANIES[overview_company_sector])
+    company_rows = []
+    with st.spinner(f"Loading {overview_company_sector} company prices and returns…"):
+        for company_ticker in company_tickers:
+            hist = get_return_history(company_ticker)
+            if hist.empty:
+                company_rows.append({
+                    "Ticker": company_ticker, "Last": None,
+                    "Daily %": None, "1W %": None, "1M %": None, "YTD %": None, "1Y %": None,
+                    "As of": "Unavailable",
+                })
+                continue
+
+            hist = hist.dropna(subset=["Close"]).sort_values("Date").copy()
+            latest_row = hist.iloc[-1]
+            latest_date = pd.Timestamp(latest_row["Date"])
+            latest_close = float(latest_row["Close"])
+
+            def trailing_return(target_date):
+                eligible = hist[hist["Date"] <= pd.Timestamp(target_date)]
+                if eligible.empty:
+                    return None
+                reference_close = float(eligible.iloc[-1]["Close"])
+                return (latest_close / reference_close - 1) * 100 if reference_close else None
+
+            previous_rows = hist[hist["Date"] < latest_date]
+            daily_ret = (
+                (latest_close / float(previous_rows.iloc[-1]["Close"]) - 1) * 100
+                if not previous_rows.empty and float(previous_rows.iloc[-1]["Close"]) else None
+            )
+            ytd_target = pd.Timestamp(year=latest_date.year, month=1, day=1) - pd.Timedelta(days=1)
+            company_rows.append({
+                "Ticker": company_ticker,
+                "Last": latest_close,
+                "Daily %": daily_ret,
+                "1W %": trailing_return(latest_date - pd.Timedelta(days=7)),
+                "1M %": trailing_return(latest_date - pd.DateOffset(months=1)),
+                "YTD %": trailing_return(ytd_target),
+                "1Y %": trailing_return(latest_date - pd.DateOffset(years=1)),
+                "As of": latest_date.strftime("%Y-%m-%d"),
+            })
+
+    company_performance = pd.DataFrame(company_rows)
+    if not company_performance.empty:
+        company_performance = company_performance.sort_values(
+            company_sort_metric, ascending=False, na_position="last"
+        )
+        company_performance = compact_observation_times(company_performance)
+        company_formats = {
+            "Last": "{:,.2f}",
+            "Daily %": "{:+.2f}%",
+            "1W %": "{:+.2f}%",
+            "1M %": "{:+.2f}%",
+            "YTD %": "{:+.2f}%",
+            "1Y %": "{:+.2f}%",
+        }
+        # Apply the same gain/loss colours to all return horizons.
+        company_styler = style_market_table(company_performance, company_formats)
+        return_columns = ["Daily %", "1W %", "1M %", "YTD %", "1Y %"]
+        for return_column in return_columns:
+            company_styler = company_styler.map(color_daily_pct, subset=[return_column])
+        st.dataframe(
+            company_styler,
+            width="stretch",
+            hide_index=True,
+            column_config={
+                "Ticker": st.column_config.TextColumn("Company / ticker"),
+                "Last": st.column_config.NumberColumn("Price", format="%.2f"),
+            },
+        )
+
     st.markdown("<div id='overview-fx' class='mi-section-band' style='--section-accent:#fdba74'><span class='mi-section-icon'>⇄</span><div><div class='mi-section-kicker'>Currency markets</div><h2>FX performance</h2></div></div>", unsafe_allow_html=True)
     fx_data = snap.loc[snap["Ticker"].isin(fx_tickers)].copy()
     if not fx_data.empty:
