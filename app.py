@@ -283,6 +283,60 @@ def get_history(ticker: str, period: str, interval: str) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=900, show_spinner=False)
+def get_recent_news(ticker: str, limit: int = 5) -> list:
+    """Fetch recent Yahoo Finance headlines; gracefully handle provider schema changes."""
+    try:
+        items = yf.Ticker(ticker).news or []
+        parsed = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            content = item.get("content", item)
+            if not isinstance(content, dict):
+                continue
+            title = content.get("title") or item.get("title")
+            if not title:
+                continue
+            url_data = content.get("canonicalUrl") or content.get("clickThroughUrl") or {}
+            url = url_data.get("url") if isinstance(url_data, dict) else url_data
+            provider_data = content.get("provider") or item.get("publisher") or {}
+            provider = provider_data.get("displayName") if isinstance(provider_data, dict) else provider_data
+            published = content.get("pubDate") or item.get("providerPublishTime")
+            if isinstance(published, (int, float)):
+                published = dt.datetime.fromtimestamp(published, tz=dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+            elif isinstance(published, str) and "T" in published:
+                try:
+                    published = dt.datetime.fromisoformat(published.replace("Z", "+00:00")).strftime("%Y-%m-%d %H:%M UTC")
+                except Exception:
+                    pass
+            parsed.append({"title": str(title), "url": url, "provider": provider or "Yahoo Finance", "published": published or "Date unavailable"})
+            if len(parsed) >= limit:
+                break
+        return parsed
+    except Exception:
+        return []
+
+
+def classify_news_context(title: str) -> str:
+    """Label headline themes without asserting that they caused a price move."""
+    text = title.lower()
+    themes = [
+        (("earnings", "quarterly results", "revenue", "profit", "eps", "results beat", "results miss"), "Earnings / financial results"),
+        (("forecast", "guidance", "outlook", "raises full-year", "cuts full-year"), "Company outlook / guidance"),
+        (("upgrade", "downgrade", "price target", "analyst rating", "initiates coverage"), "Analyst view / price target"),
+        (("acquisition", "merger", "buyout", "takeover", "deal to buy", "divest"), "M&A / corporate action"),
+        (("regulator", "lawsuit", "investigation", "court", "antitrust", "fda"), "Regulatory / legal development"),
+        (("interest rate", "federal reserve", "fed signals", "inflation", "treasury yield", "jobs report"), "Macro / interest-rate backdrop"),
+        (("oil price", "crude", "opec", "natural gas", "copper prices", "gold prices"), "Commodity / input-price backdrop"),
+        (("launches", "product launch", "new product", "contract win", "partnership"), "Product / commercial development"),
+    ]
+    for keywords, label in themes:
+        if any(keyword in text for keyword in keywords):
+            return label
+    return "General company / market headline — inspect the article for context"
+
+
+@st.cache_data(ttl=900, show_spinner=False)
 def get_return_history(ticker: str) -> pd.DataFrame:
     """Fetch enough daily history to calculate all historical return horizons."""
     return get_history(ticker, "2y", "1d")
@@ -949,6 +1003,53 @@ if page == "Overview":
             "Volume ratio compares the latest five-session average with the preceding 20-session average. "
             "Yahoo Finance coverage can be incomplete; futures volume and spot FX activity are not directly comparable."
         )
+
+        # Headline context panel: sourced headlines plus cautious theme labels.
+        st.markdown("### Why might it be moving?")
+        st.caption(
+            "Recent headlines are investigation leads, not proof of causation. Price moves can reflect several factors, "
+            "and this feed may be incomplete or delayed."
+        )
+        candidate_rows = valid_trends.loc[valid_trends["Ticker"].notna()].copy()
+        candidate_rows = candidate_rows.loc[candidate_rows["Asset class"].isin(["Stocks", "ETFs", "Sectors", "Precious Metals", "Commodities"])]
+        candidate_rows = candidate_rows.sort_values("30D %", ascending=False, na_position="last")
+        candidate_options = {}
+        for _, candidate in candidate_rows.iterrows():
+            ticker = str(candidate["Ticker"])
+            label = f"{candidate['Company']} ({ticker}) · {candidate['Sector']}"
+            candidate_options[label] = ticker
+        if candidate_options:
+            news_cols = st.columns([1, 2])
+            with news_cols[0]:
+                selected_news_label = st.selectbox(
+                    "Instrument to investigate", list(candidate_options.keys()), key="why_moving_ticker"
+                )
+            selected_news_ticker = candidate_options[selected_news_label]
+            with news_cols[1]:
+                selected_news_row = candidate_rows.loc[candidate_rows["Ticker"].astype(str) == selected_news_ticker].iloc[0]
+                daily_text = f"{selected_news_row['Daily %']:+.2f}%" if pd.notna(selected_news_row["Daily %"]) else "n/a"
+                five_text = f"{selected_news_row['5D %']:+.2f}%" if pd.notna(selected_news_row["5D %"]) else "n/a"
+                thirty_text = f"{selected_news_row['30D %']:+.2f}%" if pd.notna(selected_news_row["30D %"]) else "n/a"
+                st.markdown(
+                    f"**Recent price context:** Daily {daily_text} · 5 sessions {five_text} · 30D {thirty_text}  \n\n"
+                    f"**Trend signal:** {selected_news_row['Signal']}"
+                )
+            with st.spinner(f"Checking recent headlines for {selected_news_ticker}…"):
+                recent_news = get_recent_news(selected_news_ticker, 5)
+            if recent_news:
+                for news_item in recent_news:
+                    theme = classify_news_context(news_item["title"])
+                    safe_title = news_item["title"].replace("<", "&lt;").replace(">", "&gt;")
+                    if news_item["url"]:
+                        st.markdown(f"- **[{safe_title}]({news_item['url']})**")
+                    else:
+                        st.markdown(f"- **{safe_title}**")
+                    st.caption(f"Possible theme: {theme} · {news_item['provider']} · {news_item['published']}")
+            else:
+                st.info(
+                    "No recent headlines were returned for this instrument. Try a major stock or ETF, "
+                    "or check a trusted financial news source directly. The price/volume signals above remain available."
+                )
 
     st.markdown("<div id='overview-etfs' class='mi-section-band' style='--section-accent:#93c5fd'><span class='mi-section-icon'>▦</span><div><div class='mi-section-kicker'>Cross-asset benchmarks</div><h2>Major ETFs</h2></div></div>", unsafe_allow_html=True)
     etf_markets = snap.loc[snap["Ticker"].isin(etf_tickers)].copy()
