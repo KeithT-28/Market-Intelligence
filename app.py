@@ -815,6 +815,25 @@ if page == "Overview":
     with st.spinner("Building the rolling 30-day market dataset…"):
         trend_data = get_30d_trend_data(tuple(trend_specs))
 
+    if not trend_data.empty:
+        # Add plain-English names and sector/category labels for easier interpretation.
+        ticker_to_sector = {
+            ticker: sector_name
+            for sector_name, tickers_in_sector in SECTOR_COMPANIES.items()
+            for ticker in tickers_in_sector
+        }
+        trend_data["Company"] = trend_data.apply(
+            lambda row: COMPANY_DISPLAY_NAMES.get(row["Ticker"], row["Instrument"])
+            if row["Asset class"] == "Stocks" else row["Instrument"],
+            axis=1,
+        )
+        trend_data["Sector"] = trend_data.apply(
+            lambda row: ticker_to_sector.get(row["Ticker"], row["Asset class"])
+            if row["Asset class"] == "Stocks"
+            else (row["Instrument"] if row["Asset class"] == "Sectors" else row["Asset class"]),
+            axis=1,
+        )
+
     if trend_data.empty or trend_data["30D %"].notna().sum() == 0:
         st.warning("The 30-day dataset is temporarily unavailable. Please try refreshing market data.")
     else:
@@ -828,17 +847,23 @@ if page == "Overview":
 
         with metric_cols[0]:
             if not leaders.empty:
-                st.metric("30D leader", leaders.iloc[0]["Instrument"], f"{leaders.iloc[0]['30D %']:+.2f}%")
+                item = leaders.iloc[0]
+                st.metric("30D leader", item["Company"], f"{item['30D %']:+.2f}%")
+                st.caption(f"{item['Ticker']} · {item['Sector']}")
             else:
                 st.metric("30D leader", "—")
         with metric_cols[1]:
             if not emerging.empty:
-                st.metric("Momentum improving", emerging.iloc[0]["Instrument"], f"{emerging.iloc[0]['Acceleration']:+.2f} pp")
+                item = emerging.iloc[0]
+                st.metric("Momentum improving", item["Company"], f"{item['Acceleration']:+.2f} pp")
+                st.caption(f"{item['Ticker']} · {item['Sector']}")
             else:
                 st.metric("Momentum improving", "—")
         with metric_cols[2]:
             if not activity.empty:
-                st.metric("Unusual volume", activity.iloc[0]["Ticker"], f"{activity.iloc[0]['Volume ratio']:.1f}× average")
+                item = activity.iloc[0]
+                st.metric("Unusual volume", item["Company"], f"{item['Volume ratio']:.1f}× average")
+                st.caption(f"{item['Ticker']} · {item['Sector']}")
             else:
                 st.metric("Unusual volume", "None flagged")
         with metric_cols[3]:
@@ -873,8 +898,12 @@ if page == "Overview":
 
         chart_rows = filtered_trends.dropna(subset=["30D %"]).sort_values("30D %", ascending=True).tail(10)
         if not chart_rows.empty:
+            chart_labels = [
+                f"{row['Company']} ({row['Ticker']}) · {row['Sector']}"
+                for _, row in chart_rows.iterrows()
+            ]
             chart = go.Figure(go.Bar(
-                x=chart_rows["30D %"], y=chart_rows["Instrument"], orientation="h",
+                x=chart_rows["30D %"], y=chart_labels, orientation="h",
                 marker_color=["#34d399" if value >= 0 else "#fb7185" for value in chart_rows["30D %"]],
                 text=[f"{value:+.1f}%" for value in chart_rows["30D %"]],
                 textposition="inside", insidetextanchor="end", cliponaxis=True,
@@ -897,7 +926,7 @@ if page == "Overview":
             st.plotly_chart(chart, width="stretch", theme=None, config={"displayModeBar": False, "responsive": True})
 
         visible_cols = [
-            "Instrument", "Ticker", "Asset class", "Last", "Daily %", "5D %", "30D %",
+            "Company", "Ticker", "Sector", "Asset class", "Last", "Daily %", "5D %", "30D %",
             "Acceleration", "Volume ratio", "20D volatility", "Signal", "As of",
         ]
         visible = filtered_trends[visible_cols].copy()
