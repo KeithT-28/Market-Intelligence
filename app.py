@@ -198,6 +198,13 @@ st.markdown(
         color:#FFFFFF !important;
         font-weight:800 !important;
       }
+      /* Hide pandas row-index headers/cells if a renderer ignores Styler.hide(). */
+      [data-testid="stTable"] th.row_heading,
+      [data-testid="stTable"] th.blank,
+      [data-testid="stTable"] th.row_heading + td,
+      [data-testid="stTable"] thead th.blank {
+        display:none !important;
+      }
       [data-testid="stDataFrame"] [role="grid"] { filter:none !important; opacity:1 !important; }
       .mi-title { font-size: 1.1rem; }
       .mi-mark { width:32px; height:32px; }
@@ -389,8 +396,10 @@ def color_daily_pct(value):
 
 def style_market_table(data: pd.DataFrame, formats: dict | None = None) -> pd.io.formats.style.Styler:
     """Apply consistent dark terminal styling to all dataframe tables."""
-    # Hide the pandas row index so no numeric index column appears in rendered tables.
-    styler = data.style.hide(axis="index")
+    # Reset inherited indices (e.g. after filtering/sorting) and hide the index
+    # in the Styler. The CSS below also hides any index cells Streamlit may render.
+    clean_data = data.reset_index(drop=True)
+    styler = clean_data.style.hide(axis="index")
     if formats:
         styler = styler.format(formats, na_rep="—")
     # Explicit cell backgrounds are needed because pandas Styler otherwise
