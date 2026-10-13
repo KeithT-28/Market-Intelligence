@@ -349,6 +349,8 @@ st.markdown(
     .mi-subtitle { color:var(--mi-muted); font-size:.86rem; margin-top:.1rem; }
     .mi-eyebrow { color:#7dd3fc; font-size:.72rem; font-weight:750; letter-spacing:.13em; text-transform:uppercase; }
     .mi-section-note { color:var(--mi-muted); font-size:.82rem; margin-top:-.4rem; margin-bottom:.65rem; }
+    .mi-market-section-title { margin:.1rem 0 .45rem !important; font-size:1.22rem !important; line-height:1.25 !important; color:#e7edf7 !important; }
+    @media (max-width: 768px) { .mi-market-section-title { font-size:1.12rem !important; } }
     .mi-chip { display:inline-block; padding:.2rem .5rem; border-radius:6px; background:#172944; border:1px solid #294568; color:#93c5fd; font-size:.73rem; }
     .mi-jump-nav { position:sticky; top:.25rem; z-index:50; display:flex; gap:.45rem; overflow-x:auto; white-space:nowrap; padding:.55rem; margin:.6rem 0 1rem; border:1px solid #26364f; border-radius:12px; background:rgba(17,27,46,.98); -webkit-backdrop-filter:none; backdrop-filter:none; }
     .mi-jump-nav a { display:inline-block; text-decoration:none !important; color:#dbeafe !important; background:#172944; border:1px solid #294568; border-radius:8px; padding:.42rem .7rem; font-size:.82rem; font-weight:650; }
@@ -661,6 +663,56 @@ def format_price(value, ticker: str) -> str:
     return f"{value:,.4f}" if "=X" in ticker or ticker.endswith("=X") else f"{value:,.2f}"
 
 
+def render_compact_market_rows(data: pd.DataFrame, label_column: str) -> str:
+    """Render a compact, dark-themed market table that stays readable on phones."""
+    rows_html = []
+    for _, row in data.iterrows():
+        label = html.escape(str(row.get(label_column, "—")))
+        latest = html.escape(str(row.get("Latest", "—")))
+        move = str(row.get("Daily move", "—"))
+        safe_move = html.escape(move)
+        stripped = move.strip()
+        if stripped.startswith("+"):
+            move_class = "positive"
+        elif stripped.startswith("-") and not stripped.startswith(("-0.0", "-0.00", "-0.0 bps")):
+            move_class = "negative"
+        else:
+            move_class = "neutral"
+        rows_html.append(
+            "<div class='mi-market-row'>"
+            f"<div class='mi-market-name'>{label}</div>"
+            f"<div class='mi-market-latest'>{latest}</div>"
+            f"<div class='mi-market-move {move_class}'>{safe_move}</div>"
+            "</div>"
+        )
+    body = "".join(rows_html)
+    return (
+        "<style>"
+        ".mi-market-table{width:100%;overflow:hidden;border:1px solid #26364f;border-radius:12px;"
+        "background:#111b2e;color:#e7edf7;font-size:.88rem;line-height:1.25;margin:.35rem 0 .6rem;}"
+        ".mi-market-head,.mi-market-row{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,.78fr) minmax(0,.72fr);"
+        "gap:.35rem;align-items:center;padding:.68rem .7rem;}"
+        ".mi-market-head{background:#162238;color:#9fb0c8;font-size:.7rem;font-weight:750;letter-spacing:.04em;"
+        "text-transform:uppercase;border-bottom:1px solid #26364f;}"
+        ".mi-market-row{border-bottom:1px solid #223149;min-height:42px;}"
+        ".mi-market-row:last-child{border-bottom:0;}"
+        ".mi-market-name{font-weight:600;color:#e7edf7;overflow-wrap:anywhere;}"
+        ".mi-market-latest{font-variant-numeric:tabular-nums;white-space:nowrap;color:#dbe5f3;}"
+        ".mi-market-move{justify-self:start;font-size:.76rem;font-weight:750;font-variant-numeric:tabular-nums;"
+        "white-space:nowrap;padding:.25rem .38rem;border-radius:6px;}"
+        ".mi-market-move.positive{color:#6ee7a8;background:#12352e;}"
+        ".mi-market-move.negative{color:#fda4af;background:#3a202e;}"
+        ".mi-market-move.neutral{color:#b7c3d4;background:#202d42;}"
+        "@media(max-width:480px){.mi-market-table{font-size:.82rem}.mi-market-head,.mi-market-row{gap:.25rem;padding:.62rem .48rem;"
+        "grid-template-columns:minmax(0,1.12fr) minmax(0,.75fr) minmax(0,.72fr)}"
+        ".mi-market-head{font-size:.64rem}.mi-market-move{font-size:.7rem;padding:.22rem .28rem}}"
+        "</style>"
+        "<div class='mi-market-table'>"
+        "<div class='mi-market-head'><div>" + html.escape(label_column) + "</div><div>Latest</div><div>Daily move</div></div>"
+        + body + "</div>"
+    )
+
+
 def compact_observation_times(data: pd.DataFrame) -> pd.DataFrame:
     """Shorten provider observation timestamps for narrow mobile tables."""
     result = data.copy()
@@ -888,7 +940,7 @@ with refresh_note_col:
 st.markdown("<div class='mi-section-note'>Market data is sourced via Yahoo Finance and is not guaranteed real-time. Verify prices with your broker or licensed provider.</div>", unsafe_allow_html=True)
 
 if page == "Overview":
-    st.markdown("<div class='mi-eyebrow'>MARKET PULSE</div><h2>Market snapshot</h2>", unsafe_allow_html=True)
+    st.markdown("<div class='mi-eyebrow'>MARKET PULSE</div><h2 class='mi-market-section-title'>Market snapshot</h2>", unsafe_allow_html=True)
     overview_tickers = tuple(dict.fromkeys(("^GSPC", "^NDX", "^TNX", "DX-Y.NYB", "SPY", "QQQ", "IWM", "TLT", "GLD", *FX_UNIVERSE.values(), *COMMODITY_UNIVERSE.values())))
     snap = get_snapshot(overview_tickers)
     display_names = {
@@ -931,21 +983,11 @@ if page == "Overview":
         yield_value, yield_delta = "—", "Unavailable"
     snapshot_rows.insert(2, {"Market": "US 10Y Yield", "Latest": yield_value, "Daily move": yield_delta})
     snapshot_df = pd.DataFrame(snapshot_rows)
-    st.dataframe(
-        snapshot_df,
-        hide_index=True,
-        use_container_width=True,
-        height=190,
-        column_config={
-            "Market": st.column_config.TextColumn("Market", width="medium"),
-            "Latest": st.column_config.TextColumn("Latest", width="small"),
-            "Daily move": st.column_config.TextColumn("Daily move", width="small"),
-        },
-    )
+    st.markdown(render_compact_market_rows(snapshot_df, "Market"), unsafe_allow_html=True)
     st.caption("Daily moves compare the latest available trading session with the previous session. Data may be delayed; refresh to request a new provider response.")
 
     # Compact macro context table replaces four full-height cards on small screens.
-    st.markdown("#### Macro context")
+    st.markdown("<h3 style='font-size:1.08rem;margin:.9rem 0 .35rem;color:#e7edf7'>Macro context</h3>", unsafe_allow_html=True)
     macro_rows = []
     overview_macro_specs = [("US 10Y yield", "^TNX", "yield"), ("US Dollar Index", "DX-Y.NYB", "price"), ("Gold futures", "GC=F", "price"), ("WTI crude", "CL=F", "price")]
     for macro_label, macro_ticker, macro_kind in overview_macro_specs:
@@ -963,17 +1005,7 @@ if page == "Overview":
             macro_rows.append({"Indicator": macro_label, "Latest": macro_value, "Daily move": macro_delta})
         else:
             macro_rows.append({"Indicator": macro_label, "Latest": "—", "Daily move": "Unavailable"})
-    st.dataframe(
-        pd.DataFrame(macro_rows),
-        hide_index=True,
-        use_container_width=True,
-        height=190,
-        column_config={
-            "Indicator": st.column_config.TextColumn("Indicator", width="medium"),
-            "Latest": st.column_config.TextColumn("Latest", width="small"),
-            "Daily move": st.column_config.TextColumn("Daily move", width="small"),
-        },
-    )
+    st.markdown(render_compact_market_rows(pd.DataFrame(macro_rows), "Indicator"), unsafe_allow_html=True)
     st.caption("Macro context is a market snapshot, not an official economic calendar. Open Macro & Event Analysis in the sidebar to study historical release windows.")
 
     # Compact jump navigation makes the long Overview easier to scan on mobile.
