@@ -1011,6 +1011,7 @@ if page == "Overview":
     # Compact jump navigation makes the long Overview easier to scan on mobile.
     st.markdown(
         "<nav class='mi-jump-nav' aria-label='Market sections'>"
+        "<a href='#overview-briefing'>◷ Daily Briefing</a>"
         "<a href='#overview-trends'>↗ 30D Trends</a>"
         "<a href='#overview-etfs'>▦ ETFs</a>"
         "<a href='#overview-sectors'>▥ Sectors</a>"
@@ -1025,19 +1026,7 @@ if page == "Overview":
     fx_tickers = tuple(dict.fromkeys(FX_UNIVERSE.values()))
     etf_tickers = ("SPY", "QQQ", "IWM", "TLT", "GLD")
 
-    # -----------------------------
-    # Rolling 30-day market trends
-    # -----------------------------
-    st.markdown(
-        "<div id='overview-trends' class='mi-section-band' style='--section-accent:#fbbf24'>"
-        "<span class='mi-section-icon'>↗</span><div><div class='mi-section-kicker'>Market intelligence</div>"
-        "<h2>30-Day Market Trends</h2></div></div>",
-        unsafe_allow_html=True,
-    )
-    st.caption(
-        "Find leaders, emerging momentum and unusual activity across the dashboard watchlist. "
-        "30D uses approximately 21 trading sessions. Volume signals are only interpreted for stocks, ETFs and sector funds."
-    )
+    # Rolling 30-day market trends data is prepared here; its visual section appears after the Daily Market Briefing.
 
     trend_specs = []
     seen_trend_tickers = set()
@@ -1086,7 +1075,7 @@ if page == "Overview":
     # Daily market briefing
     # -----------------------------
     st.markdown(
-        "<div class='mi-section-band' style='--section-accent:#60a5fa'>"
+        "<div id='overview-briefing' class='mi-section-band' style='--section-accent:#60a5fa'>"
         "<span class='mi-section-icon'>◷</span><div><div class='mi-section-kicker'>DAILY RESEARCH</div>"
         "<h2>Daily Market Briefing</h2></div></div>",
         unsafe_allow_html=True,
@@ -1262,6 +1251,20 @@ if page == "Overview":
             "[BEA release schedule](https://www.bea.gov/news/schedule)"
         )
     st.caption("Observed moves are shown separately from possible explanations. A headline appearing near a move does not establish that it caused the move. Data is sourced from Yahoo Finance and may be delayed or incomplete.")
+
+    # -----------------------------
+    # Rolling 30-day market trends (visual section)
+    # -----------------------------
+    st.markdown(
+        "<div id='overview-trends' class='mi-section-band' style='--section-accent:#fbbf24'>"
+        "<span class='mi-section-icon'>↗</span><div><div class='mi-section-kicker'>Market intelligence</div>"
+        "<h2>30-Day Market Trends</h2></div></div>",
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Find leaders, emerging momentum and unusual activity across the dashboard watchlist. "
+        "30D uses approximately 21 trading sessions. Volume signals are only interpreted for stocks, ETFs and sector funds."
+    )
 
     if trend_data.empty or trend_data["30D %"].notna().sum() == 0:
         st.warning("The 30-day dataset is temporarily unavailable. Please try refreshing market data.")
